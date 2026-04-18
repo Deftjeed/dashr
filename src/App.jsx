@@ -55,6 +55,18 @@ const CSS = `
 .nav-link{transition:color .2s}.nav-link:hover{color:#820AD1!important}
 .input-focus{transition:border-color .2s,box-shadow .2s}
 .input-focus:focus-within{border-color:#820AD1!important;box-shadow:0 0 0 3px rgba(130,10,209,0.1)!important}
+.nav-links{display:flex;gap:32px;font-size:14px;font-weight:500}
+.nav-cta{display:flex}
+@media(max-width:640px){
+  .nav-links{display:none}
+  .nav-cta button{padding:8px 16px!important;font-size:12px!important}
+  .sim-inputs{flex-direction:row!important}
+  .sim-select{width:72px!important;font-size:13px!important;padding:12px 4px!important}
+  .sim-amount{font-size:20px!important;padding:12px 0!important}
+  .sim-card{padding:20px!important;border-radius:20px!important}
+  .hero-section{padding:40px 16px 32px!important;gap:32px!important}
+  .hero-buttons button{max-width:100%!important;width:100%!important}
+}
 `;
 
 function Fq({q,a,i}){const[o,setO]=useState(false);return(
@@ -142,14 +154,14 @@ export default function App(){
 <style>{CSS}</style>
 
 {/* NAV */}
-<nav style={{position:"sticky",top:0,zIndex:100,background:"rgba(255,255,255,0.85)",backdropFilter:"blur(20px) saturate(1.8)",borderBottom:"1px solid rgba(0,0,0,0.06)",padding:"0 clamp(16px,4vw,48px)",height:64,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-  <span style={{fontWeight:800,fontSize:24,color:P,letterSpacing:-0.5}}>DA$HR</span>
-  <div style={{display:"flex",gap:32,fontSize:14,fontWeight:500}}>{["Beneficios","Como funciona","Destinos","FAQ"].map((t,i)=><a key={i} href={"#s"+i} className="nav-link" style={{textDecoration:"none",color:"#888"}}>{t}</a>)}</div>
-  <button onClick={toSim} className="btn-glow" style={{background:P,color:"#fff",border:"none",borderRadius:100,padding:"10px 24px",fontSize:13,fontWeight:600,cursor:"pointer",boxShadow:"0 2px 12px rgba(130,10,209,0.25)"}}>Cotizar ahora</button>
+<nav style={{position:"sticky",top:0,zIndex:100,background:"rgba(255,255,255,0.92)",backdropFilter:"blur(20px) saturate(1.8)",borderBottom:"1px solid rgba(0,0,0,0.06)",padding:"0 clamp(16px,4vw,48px)",height:60,display:"flex",alignItems:"center",justifyContent:"space-between",gap:16}}>
+  <span style={{fontWeight:800,fontSize:22,color:P,letterSpacing:-0.5,flexShrink:0}}>DA$HR</span>
+  <div className="nav-links">{["Beneficios","Como funciona","Destinos","FAQ"].map((t,i)=><a key={i} href={"#s"+i} className="nav-link" style={{textDecoration:"none",color:"#888",whiteSpace:"nowrap"}}>{t}</a>)}</div>
+  <div className="nav-cta"><button onClick={toSim} className="btn-glow" style={{background:P,color:"#fff",border:"none",borderRadius:100,padding:"10px 20px",fontSize:13,fontWeight:600,cursor:"pointer",boxShadow:"0 2px 12px rgba(130,10,209,0.25)",whiteSpace:"nowrap",flexShrink:0}}>Cotizar ahora</button></div>
 </nav>
 
 {/* HERO */}
-<section style={{padding:"clamp(60px,10vw,120px) clamp(16px,4vw,48px) 80px",display:"flex",flexWrap:"wrap",gap:"clamp(32px,5vw,80px)",alignItems:"center",maxWidth:1200,margin:"0 auto",position:"relative",overflow:"hidden"}}>
+<section className="hero-section" style={{padding:"clamp(40px,8vw,120px) clamp(16px,4vw,48px) 60px",display:"flex",flexWrap:"wrap",gap:"clamp(24px,5vw,80px)",alignItems:"center",maxWidth:1200,margin:"0 auto",position:"relative",overflow:"hidden"}}>
   <div style={{position:"absolute",top:-200,right:-200,width:500,height:500,borderRadius:"50%",background:"radial-gradient(circle,rgba(130,10,209,0.06) 0%,transparent 70%)",pointerEvents:"none"}}/>
 
   <div className="fade-up" style={{flex:"1 1 420px",minWidth:0,position:"relative",zIndex:1}}>
@@ -160,7 +172,7 @@ export default function App(){
     <h1 className="fade-up d2" style={{fontSize:"clamp(40px,5.5vw,60px)",fontWeight:800,lineHeight:1.04,letterSpacing:-2.5,margin:"0 0 20px"}}>{"Envía dinero a"}<br/><span style={{color:P,background:"linear-gradient(135deg,#820AD1,#A855F7)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Argentina</span><br/>{"y recíbelo "}<span style={{color:P,background:"linear-gradient(135deg,#820AD1,#A855F7)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>hoy</span></h1>
     <p className="fade-up d3" style={{fontSize:17,color:"#666",lineHeight:1.6,margin:"0 0 8px"}}>Sin apps, sin registros. Todo por WhatsApp.</p>
     <p className="fade-up d3" style={{fontSize:14,color:"#aaa",lineHeight:1.6,margin:"0 0 32px",maxWidth:440}}>La mejor tasa del mercado, sin comisiones ocultas. Tu dinero llega en minutos a Argentina, Venezuela y más.</p>
-    <div className="fade-up d4" style={{display:"flex",flexDirection:"column",gap:12}}>
+    <div className="fade-up d4 hero-buttons" style={{display:"flex",flexDirection:"column",gap:12}}>
       <button onClick={openWA} className="btn-glow" style={{background:P,color:"#fff",border:"none",borderRadius:14,padding:"18px 36px",fontSize:16,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,maxWidth:420,boxShadow:"0 4px 24px rgba(130,10,209,0.3)"}}><WASvg/> Cotizar por WhatsApp</button>
       <button onClick={()=>document.getElementById("s1")?.scrollIntoView({behavior:"smooth"})} className="btn-outline" style={{background:"transparent",border:"2px solid "+P,borderRadius:14,padding:"16px 36px",fontSize:15,fontWeight:600,cursor:"pointer",color:P,maxWidth:260}}>{"¿Cómo funciona?"}</button>
     </div>
@@ -172,29 +184,29 @@ export default function App(){
   </div>
 
   {/* SIMULATOR - Glassmorphism */}
-  <div id="sim" className="slide-in" style={{flex:"1 1 400px",maxWidth:460,minWidth:0}}>
-    <div className="sim-card" style={{background:"rgba(255,255,255,0.8)",backdropFilter:"blur(20px) saturate(1.5)",borderRadius:28,padding:32,boxShadow:"0 8px 60px rgba(130,10,209,0.1)",border:"1px solid rgba(255,255,255,0.6)"}}>
+  <div id="sim" className="slide-in" style={{flex:"1 1 320px",maxWidth:460,minWidth:0,width:"100%"}}>
+    <div className="sim-card" style={{background:"rgba(255,255,255,0.92)",backdropFilter:"blur(20px) saturate(1.5)",borderRadius:24,padding:"clamp(20px,4vw,32px)",boxShadow:"0 8px 60px rgba(130,10,209,0.1)",border:"1px solid rgba(255,255,255,0.6)"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
         <span style={{fontWeight:700,fontSize:19}}>Simulador de envío</span>
         <span style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#22C55E",fontWeight:600,background:"#F0FDF4",padding:"5px 14px",borderRadius:100}}><span className="pulse-dot" style={{width:7,height:7,borderRadius:"50%",background:"#22C55E"}}/>{ready?"En vivo":"Cargando..."}</span>
       </div>
       <label style={{fontSize:11,fontWeight:700,color:"#aaa",textTransform:"uppercase",letterSpacing:0.8,display:"block",marginBottom:8}}>Tú envías</label>
-      <div className="input-focus" style={{display:"flex",gap:8,marginBottom:6}}>
-        <div style={{flex:1,display:"flex",alignItems:"center",gap:8,background:"#FAFAFA",border:"1.5px solid #e8e8e8",borderRadius:14,padding:"0 16px",transition:"all .2s"}}>
-          <span style={{fontSize:14,color:"#ccc",fontWeight:700}}>{fromC.substring(0,2)}</span>
-          <input type="text" inputMode="numeric" value={input} onChange={e=>{const r=pa(e.target.value);setInput(r>0?fm(r):"")}} style={{flex:1,fontSize:24,fontWeight:700,fontFamily:"'SF Mono','Fira Code',monospace",padding:"16px 0",border:"none",outline:"none",background:"transparent",color:"#1a1a1a",minWidth:0}}/>
+      <div className="input-focus sim-inputs" style={{display:"flex",gap:8,marginBottom:6}}>
+        <div style={{flex:1,display:"flex",alignItems:"center",gap:8,background:"#FAFAFA",border:"1.5px solid #e8e8e8",borderRadius:14,padding:"0 12px",transition:"all .2s",minWidth:0}}>
+          <span style={{fontSize:13,color:"#ccc",fontWeight:700,flexShrink:0}}>{fromC.substring(0,2)}</span>
+          <input type="text" inputMode="numeric" value={input} onChange={e=>{const r=pa(e.target.value);setInput(r>0?fm(r):"")}} className="sim-amount" style={{flex:1,fontSize:22,fontWeight:700,fontFamily:"'SF Mono','Fira Code',monospace",padding:"14px 0",border:"none",outline:"none",background:"transparent",color:"#1a1a1a",minWidth:0,width:"100%"}}/>
         </div>
-        <select value={fromC} onChange={e=>hF(e.target.value)} style={{width:85,fontSize:14,fontWeight:600,padding:"16px 8px",background:"#FAFAFA",border:"1.5px solid #e8e8e8",borderRadius:14,color:P,cursor:"pointer",outline:"none",transition:"border .2s"}}>{CU.map(c=><option key={c.c} value={c.c}>{c.c}</option>)}</select>
+        <select value={fromC} onChange={e=>hF(e.target.value)} className="sim-select" style={{width:80,fontSize:14,fontWeight:600,padding:"14px 6px",background:"#FAFAFA",border:"1.5px solid #e8e8e8",borderRadius:14,color:P,cursor:"pointer",outline:"none",flexShrink:0}}>{CU.map(c=><option key={c.c} value={c.c}>{c.c}</option>)}</select>
       </div>
       <div style={{fontSize:11,color:"#ccc",marginBottom:12}}>{fi.sub}</div>
       <div style={{display:"flex",justifyContent:"center",margin:"4px 0 12px"}}><button onClick={swap} className="btn-outline" style={{width:44,height:44,borderRadius:"50%",border:"1.5px solid #e8e8e8",background:"#fff",cursor:"pointer",fontSize:18,color:P,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.04)",transition:"all .3s cubic-bezier(.22,1,.36,1)"}} onMouseOver={e=>e.currentTarget.style.transform="rotate(180deg)"} onMouseOut={e=>e.currentTarget.style.transform=""}>{"↓"}</button></div>
       <label style={{fontSize:11,fontWeight:700,color:"#aaa",textTransform:"uppercase",letterSpacing:0.8,display:"block",marginBottom:8}}>Ellos reciben</label>
-      <div style={{display:"flex",gap:8,marginBottom:6}}>
-        <div style={{flex:1,display:"flex",alignItems:"center",gap:8,background:"linear-gradient(135deg,#F3E8FF,#EDE9FE)",border:"1.5px solid #E9D5FF",borderRadius:14,padding:"0 16px",transition:"all .3s"}}>
-          <span style={{fontSize:14,color:"#A78BFA",fontWeight:700}}>{toC.substring(0,2)}</span>
-          <input type="text" readOnly value={fm(result)} style={{flex:1,fontSize:24,fontWeight:700,fontFamily:"'SF Mono','Fira Code',monospace",padding:"16px 0",border:"none",outline:"none",background:"transparent",color:P,cursor:"default",minWidth:0,transition:"color .3s"}}/>
+      <div className="sim-inputs" style={{display:"flex",gap:8,marginBottom:6}}>
+        <div style={{flex:1,display:"flex",alignItems:"center",gap:8,background:"linear-gradient(135deg,#F3E8FF,#EDE9FE)",border:"1.5px solid #E9D5FF",borderRadius:14,padding:"0 12px",transition:"all .3s",minWidth:0}}>
+          <span style={{fontSize:13,color:"#A78BFA",fontWeight:700,flexShrink:0}}>{toC.substring(0,2)}</span>
+          <input type="text" readOnly value={fm(result)} className="sim-amount" style={{flex:1,fontSize:22,fontWeight:700,fontFamily:"'SF Mono','Fira Code',monospace",padding:"14px 0",border:"none",outline:"none",background:"transparent",color:P,cursor:"default",minWidth:0,width:"100%",transition:"color .3s"}}/>
         </div>
-        <select value={toC} onChange={e=>hT(e.target.value)} style={{width:85,fontSize:14,fontWeight:600,padding:"16px 8px",background:"#FAFAFA",border:"1.5px solid #e8e8e8",borderRadius:14,color:P,cursor:"pointer",outline:"none"}}>{CU.map(c=><option key={c.c} value={c.c}>{c.c}</option>)}</select>
+        <select value={toC} onChange={e=>hT(e.target.value)} className="sim-select" style={{width:80,fontSize:14,fontWeight:600,padding:"14px 6px",background:"#FAFAFA",border:"1.5px solid #e8e8e8",borderRadius:14,color:P,cursor:"pointer",outline:"none",flexShrink:0}}>{CU.map(c=><option key={c.c} value={c.c}>{c.c}</option>)}</select>
       </div>
       <div style={{fontSize:11,color:"#ccc",marginBottom:16}}>{ti.sub}</div>
       <div style={{fontSize:13,color:"#888",marginBottom:20,padding:"10px 14px",background:"#FAFAFA",borderRadius:10,transition:"all .3s"}}>{rate>0?"Tasa actualizada: 1 "+fromC+" = "+rate.toFixed(4)+" "+toC:"Ingresa un monto para ver la tasa"}</div>
