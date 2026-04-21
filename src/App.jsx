@@ -11,7 +11,7 @@ async function fBinance(){var rates={},count=0;var res=await Promise.allSettled(
 function mrg(api){var m={};for(var i=0;i<CURRENCIES_LIST.length;i++){var c=CURRENCIES_LIST[i];m[c]=(api&&api[c]&&api[c]>0)?api[c]:FALLBACK_RATES[c]}return m}
 function vld(r){if(!r)return false;for(var i=0;i<CURRENCIES_LIST.length;i++){if(!r[CURRENCIES_LIST[i]]||r[CURRENCIES_LIST[i]]<=0)return false}return true}
 async function loadRates(){var n=Date.now();if(_cache&&n-_cache.ts<CACHE_MS)return _cache;if(_consecutiveFailures>0&&n-_lastAttempt<RETRY_MS)return _cache||{rates:{...FALLBACK_RATES},src:"live",ts:n};_lastAttempt=n;var pr=await fProxy();if(pr){var m1=mrg(pr);if(vld(m1)){_consecutiveFailures=0;_cache={rates:m1,src:"live",ts:n};return _cache}}var br=await fBinance();if(br){var m2=mrg(br);if(vld(m2)){_consecutiveFailures=0;_cache={rates:m2,src:"live",ts:n};return _cache}}_consecutiveFailures++;_cache={rates:{...FALLBACK_RATES},src:"live",ts:n};return _cache}
-function cf(f,t){const p=[f,t].sort().join("-");return p==="ARS-COP"?.96:(p==="COP-VES"||p==="ARS-VES")?.94:.915}
+function cf(f,t){const p=[f,t].sort().join("-");return p==="ARS-COP"?.95:(p==="COP-VES"||p==="ARS-VES")?.94:.915}
 function calc(a,f,t,r){if(!a||a<=0||f===t||!r||!r[f]||!r[t])return{result:0,rate:0};const u=a/r[f],b=u*r[t],fin=b*cf(f,t),rd=Math.floor(fin/100)*100;return{result:Math.max(0,rd),rate:a>0?rd/a:0}}
 
 // ══════════ CONFIG ══════════
