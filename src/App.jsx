@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 // ══════════ RATE ENGINE (UNTOUCHED) ══════════
 const DEBUG=false,FALLBACK_RATES={COP:3600,ARS:1445,VES:619,MXN:17.4,CLP:882},CURRENCIES_LIST=["COP","ARS","VES","MXN","CLP"],CACHE_MS=300000,RETRY_MS=30000,FETCH_TIMEOUT=8000;let _cache=null,_lastAttempt=0,_consecutiveFailures=0;const PROXY_URL="https://dashr-rates.jeans1jean1.workers.dev/rates";
@@ -16,122 +16,235 @@ function calc(a,f,t,r){if(!a||a<=0||f===t||!r||!r[f]||!r[t])return{result:0,rate
 
 // ══════════ CONFIG ══════════
 const WA="573117405064";
+const IG="https://instagram.com/dashremesas";
 const CU=[{c:"COP",n:"Colombia",s:"$",sub:"Peso colombiano"},{c:"ARS",n:"Argentina",s:"$",sub:"Peso argentino"},{c:"VES",n:"Venezuela",s:"Bs.",sub:"Bolívar"},{c:"MXN",n:"México",s:"$",sub:"Peso mexicano"},{c:"CLP",n:"Chile",s:"$",sub:"Peso chileno"}];
-const PR={COP:[100000,200000,500000],ARS:[50000,100000,500000],VES:[100,500,1000],MXN:[1000,5000,10000],CLP:[50000,100000,500000]};
 const fm=n=>Math.floor(n).toLocaleString("es-CO");
 const pa=s=>parseInt(s.replace(/[^0-9]/g,""),10)||0;
 const gc=c=>CU.find(x=>x.c===c);
 const STARS=String.fromCharCode(9733,9733,9733,9733,9733);
+
+// ══════════ TOKENS ══════════
+const T={
+  purple:"#820AD1", purpleHi:"#A855F7", purpleDeep:"#6B21A8", purpleSoft:"#C77DFF",
+  tint:"#F4ECFE", tintSoft:"#FAF7FF", border:"#ECE7F5", borderHi:"#E1D6F5",
+  ink:"#190A2E", ink2:"#5C5470", ink3:"#9A93AD", wa:"#25D366", waDeep:"#1EBE5A",
+  usdt:"#26A17B", usdtHi:"#2EBD8E",
+  s1:"0 1px 2px rgba(25,10,46,.04), 0 2px 8px rgba(130,10,209,.05)",
+  s2:"0 8px 24px rgba(130,10,209,.08)", s3:"0 20px 50px rgba(130,10,209,.14)",
+  rCard:24, rField:16, rPill:100,
+  font:"'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+};
+const P=T.purple;
+
 const WASvg=({size=18,color="white"})=><svg width={size} height={size} viewBox="0 0 24 24" fill={color}><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>;
 
-// ══════════ CSS ANIMATIONS ══════════
+// ══════════ STYLES ══════════
 const CSS = `
-@keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
-@keyframes fadeIn{from{opacity:0}to{opacity:1}}
-@keyframes slideIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
-@keyframes orbit{from{transform:rotate(0deg) translateX(120px) rotate(0deg)}to{transform:rotate(360deg) translateX(120px) rotate(-360deg)}}
-@keyframes orbit3d{0%{transform:rotate(var(--start)) translateX(var(--radius)) rotate(calc(-1*var(--start))) scale(1);opacity:1;filter:blur(0)}50%{transform:rotate(calc(var(--start) + 180deg)) translateX(var(--radius)) rotate(calc(-1*(var(--start) + 180deg))) scale(0.7);opacity:0.5;filter:blur(1px)}100%{transform:rotate(calc(var(--start) + 360deg)) translateX(var(--radius)) rotate(calc(-1*(var(--start) + 360deg))) scale(1);opacity:1;filter:blur(0)}}
-@keyframes coreGlow{0%,100%{box-shadow:0 0 30px rgba(130,10,209,0.3),0 0 60px rgba(130,10,209,0.15),inset 0 0 30px rgba(255,255,255,0.1)}50%{box-shadow:0 0 50px rgba(130,10,209,0.45),0 0 100px rgba(130,10,209,0.2),inset 0 0 40px rgba(255,255,255,0.15)}}
-@keyframes coreSpin{from{transform:translate(-50%,-50%) rotate(0deg)}to{transform:translate(-50%,-50%) rotate(360deg)}}
-@keyframes coinSpin{0%{transform:rotateY(0deg)}100%{transform:rotateY(360deg)}}
-@keyframes particleFloat{0%,100%{opacity:0;transform:translate(0,0) scale(0.5)}25%{opacity:0.6}50%{opacity:0.8;transform:translate(var(--px),var(--py)) scale(1)}75%{opacity:0.4}}
-@keyframes glow{0%,100%{box-shadow:0 0 20px rgba(130,10,209,0.15)}50%{box-shadow:0 0 40px rgba(130,10,209,0.3)}}
-@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
-.fade-up{animation:fadeUp .7s cubic-bezier(.22,1,.36,1) both}
-.fade-in{animation:fadeIn .6s ease both}
-.slide-in{animation:slideIn .7s cubic-bezier(.22,1,.36,1) both}
-.d1{animation-delay:.1s}.d2{animation-delay:.2s}.d3{animation-delay:.3s}.d4{animation-delay:.4s}.d5{animation-delay:.5s}
-.btn-glow{transition:all .25s cubic-bezier(.22,1,.36,1)}
-.btn-glow:hover{transform:translateY(-2px) scale(1.02);box-shadow:0 8px 32px rgba(130,10,209,0.35)!important}
-.btn-glow:active{transform:translateY(0) scale(.98)}
-.btn-outline{transition:all .25s cubic-bezier(.22,1,.36,1)}
-.btn-outline:hover{background:rgba(130,10,209,0.06)!important;transform:translateY(-1px)}
-.card-lift{transition:all .3s cubic-bezier(.22,1,.36,1)}
-.card-lift:hover{transform:translateY(-8px);box-shadow:0 16px 48px rgba(130,10,209,0.14)!important}
-.sim-card{animation:float 6s ease-in-out infinite,glow 4s ease-in-out infinite}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+*{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+@keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+@keyframes ring{0%{box-shadow:0 0 0 0 rgba(37,211,102,.45)}70%{box-shadow:0 0 0 9px rgba(37,211,102,0)}100%{box-shadow:0 0 0 0 rgba(37,211,102,0)}}
+@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+@keyframes floaty2{0%,100%{transform:translateY(0) rotate(-6deg)}50%{transform:translateY(-16px) rotate(-6deg)}}
+@keyframes floaty3{0%,100%{transform:translateY(0) rotate(8deg)}50%{transform:translateY(-10px) rotate(8deg)}}
+@keyframes spinSlow{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+@keyframes auraShift{0%{transform:translate(0,0) scale(1)}33%{transform:translate(28px,-18px) scale(1.08)}66%{transform:translate(-18px,18px) scale(.95)}100%{transform:translate(0,0) scale(1)}}
+@keyframes gradMove{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+@keyframes dashFlow{to{stroke-dashoffset:-200}}
+@keyframes barRise{from{transform:scaleY(.15)}to{transform:scaleY(1)}}
+@keyframes rateFlash{0%{box-shadow:0 0 0 0 rgba(130,10,209,.5)}100%{box-shadow:0 0 0 10px rgba(130,10,209,0)}}
+@keyframes sheen{0%{opacity:0;transform:translateX(-60%)}40%{opacity:.5}100%{opacity:0;transform:translateX(160%)}}
 .pulse-dot{animation:pulse 2s ease-in-out infinite}
-.orbit-item{position:absolute;animation:orbit linear infinite}
-.nav-link{transition:color .2s}.nav-link:hover{color:#820AD1!important}
+.live-ring{animation:ring 2.2s infinite}
+.btn-wa{transition:transform .25s,box-shadow .25s,background .2s}
+.btn-wa:hover{transform:translateY(-2px);background:#1EBE5A!important;box-shadow:0 12px 30px rgba(37,211,102,.4)!important}
+.btn-wa:active{transform:translateY(0) scale(.985)}
+.btn-glow{transition:transform .25s,box-shadow .25s,background .2s}
+.btn-glow:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(130,10,209,.34)!important}
+.btn-outline{transition:all .25s cubic-bezier(.22,1,.36,1)}
+.btn-outline:hover{background:rgba(130,10,209,0.05)!important;transform:translateY(-1px)}
+.eco{transition:transform .35s cubic-bezier(.22,1,.36,1),box-shadow .35s,border-color .35s}
+.eco:hover{transform:translateY(-8px);box-shadow:0 22px 50px rgba(130,10,209,.16)!important;border-color:`+T.borderHi+`!important}
+.eco:hover .eco-illu{transform:scale(1.08) rotate(-2deg)}
+.eco-illu{transition:transform .45s cubic-bezier(.22,1,.36,1)}
+.card-lift{transition:transform .3s cubic-bezier(.22,1,.36,1),box-shadow .3s}
+.card-lift:hover{transform:translateY(-6px);box-shadow:0 18px 44px rgba(130,10,209,.13)!important}
+.sim-card{animation:floaty 7s ease-in-out infinite}
+.nav-link{transition:color .2s}.nav-link:hover{color:`+P+`!important}
+.flink{transition:color .2s}.flink:hover{color:#C77DFF!important}
 .input-focus{transition:border-color .2s,box-shadow .2s}
-.input-focus:focus-within{border-color:#820AD1!important;box-shadow:0 0 0 3px rgba(130,10,209,0.1)!important}
-.nav-links{display:flex;gap:32px;font-size:14px;font-weight:500}
-.nav-cta{display:flex}
-@media(max-width:640px){
+.input-focus:focus-within{border-color:`+P+`!important;box-shadow:0 0 0 4px rgba(130,10,209,0.1)!important}
+.swapbtn{transition:transform .4s cubic-bezier(.22,1,.36,1),background .2s}
+.swapbtn:hover{transform:rotate(180deg);background:`+T.tint+`!important}
+.nav-links{display:flex;gap:30px;font-size:14.5px;font-weight:500}
+.coin3d{animation:floaty 6s ease-in-out infinite}
+.gnode{cursor:pointer;transition:opacity .3s}
+@media(max-width:760px){
   .nav-links{display:none}
-  .nav-cta button{padding:8px 16px!important;font-size:12px!important}
-  .sim-inputs{flex-direction:row!important}
-  .sim-select{width:72px!important;font-size:13px!important;padding:12px 4px!important}
-  .sim-amount{font-size:20px!important;padding:12px 0!important}
-  .sim-card{padding:20px!important;border-radius:20px!important}
-  .hero-section{padding:40px 16px 32px!important;gap:32px!important}
-  .hero-buttons button{max-width:100%!important;width:100%!important}
+  .hero-flex{flex-direction:column!important}
+  .sim-amount{font-size:21px!important}
+  .mwa{display:flex!important}
+  .two-col{grid-template-columns:1fr!important}
+  .hero-globe{display:none!important}
 }
+.mwa{display:none}
 `;
 
+function useCountUp(value){
+  const[disp,setDisp]=useState(value);const ref=useRef(value);
+  useEffect(()=>{const from=ref.current,to=value,dur=420,start=performance.now();let raf;
+    function step(now){const p=Math.min(1,(now-start)/dur);const e=1-Math.pow(1-p,3);setDisp(Math.round(from+(to-from)*e));if(p<1)raf=requestAnimationFrame(step);else ref.current=to}
+    raf=requestAnimationFrame(step);return()=>cancelAnimationFrame(raf)},[value]);
+  return disp;
+}
+
+function Reveal({children,delay=0,y=30,style}){
+  const ref=useRef(null);const[seen,setSeen]=useState(false);
+  useEffect(()=>{const el=ref.current;if(!el)return;const o=new IntersectionObserver(([e])=>{if(e.isIntersecting){setSeen(true);o.disconnect()}},{threshold:.14});o.observe(el);return()=>o.disconnect()},[]);
+  return <div ref={ref} style={{...style,opacity:seen?1:0,transform:seen?"none":"translateY("+y+"px)",transition:"opacity .8s cubic-bezier(.22,1,.36,1) "+delay+"s, transform .8s cubic-bezier(.22,1,.36,1) "+delay+"s"}}>{children}</div>;
+}
+
+// count-up que dispara al entrar en viewport
+function StatNum({value,suffix,prefix}){
+  const ref=useRef(null);const[v,setV]=useState(0);const done=useRef(false);
+  useEffect(()=>{const el=ref.current;if(!el)return;const o=new IntersectionObserver(([e])=>{if(e.isIntersecting&&!done.current){done.current=true;const dur=1400,start=performance.now();
+    function step(now){const p=Math.min(1,(now-start)/dur);const ea=1-Math.pow(1-p,3);setV(Math.round(value*ea));if(p<1)requestAnimationFrame(step)}requestAnimationFrame(step);o.disconnect()}},{threshold:.4});o.observe(el);return()=>o.disconnect()},[value]);
+  return <span ref={ref}>{(prefix||"")+v.toLocaleString("es-CO")+(suffix||"")}</span>;
+}
+
 function Fq({q,a,i}){const[o,setO]=useState(false);return(
-<div className={"fade-up d"+(i%4+1)} style={{background:"#fff",borderRadius:14,marginBottom:10,border:"1px solid #f0f0f0",overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.03)",transition:"box-shadow .2s"}}
-  onMouseOver={e=>e.currentTarget.style.boxShadow="0 4px 16px rgba(130,10,209,0.08)"}
-  onMouseOut={e=>e.currentTarget.style.boxShadow="0 1px 4px rgba(0,0,0,0.03)"}>
+<div style={{background:"#fff",borderRadius:16,marginBottom:10,border:"1px solid "+T.border,overflow:"hidden",transition:"box-shadow .2s"}}
+  onMouseOver={e=>e.currentTarget.style.boxShadow=T.s1} onMouseOut={e=>e.currentTarget.style.boxShadow="none"}>
   <button onClick={()=>setO(!o)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",width:"100%",background:"none",border:"none",cursor:"pointer",padding:"20px 22px",fontFamily:"inherit",gap:16}}>
-    <span style={{fontSize:15,fontWeight:600,color:"#1a1a1a",textAlign:"left"}}>{q}</span>
-    <span style={{fontSize:14,color:"#820AD1",transition:"transform .3s cubic-bezier(.22,1,.36,1)",transform:o?"rotate(180deg)":"none",flexShrink:0}}>{o?String.fromCharCode(8963):String.fromCharCode(8964)}</span>
+    <span style={{fontSize:15.5,fontWeight:600,color:T.ink,textAlign:"left",letterSpacing:-0.2}}>{q}</span>
+    <span style={{fontSize:22,color:P,transition:"transform .3s",transform:o?"rotate(45deg)":"none",flexShrink:0,lineHeight:1}}>+</span>
   </button>
-  <div style={{maxHeight:o?200:0,overflow:"hidden",transition:"max-height .4s cubic-bezier(.22,1,.36,1)"}}><div style={{padding:"0 22px 20px",fontSize:14,color:"#666",lineHeight:1.7}}>{a}</div></div>
+  <div style={{maxHeight:o?240:0,overflow:"hidden",transition:"max-height .4s cubic-bezier(.22,1,.36,1)"}}><div style={{padding:"0 22px 20px",fontSize:14.5,color:T.ink2,lineHeight:1.7}}>{a}</div></div>
 </div>)}
 
-function FlagSvg({country,size=32}){
-  const s=size;
-  if(country==="CO") return <svg width={s} height={s} viewBox="0 0 40 30" style={{borderRadius:4,filter:"drop-shadow(0 1px 2px rgba(0,0,0,0.12))"}}><rect width="40" height="15" fill="#FCD116"/><rect y="15" width="40" height="7.5" fill="#003893"/><rect y="22.5" width="40" height="7.5" fill="#CE1126"/></svg>;
-  if(country==="AR") return <svg width={s} height={s} viewBox="0 0 40 30" style={{borderRadius:4,filter:"drop-shadow(0 1px 2px rgba(0,0,0,0.12))"}}><rect width="40" height="30" fill="#fff"/><rect width="40" height="10" fill="#75AADB"/><rect y="20" width="40" height="10" fill="#75AADB"/><circle cx="20" cy="15" r="3.5" fill="#F6B40E"/></svg>;
-  if(country==="VE") return <svg width={s} height={s} viewBox="0 0 40 30" style={{borderRadius:4,filter:"drop-shadow(0 1px 2px rgba(0,0,0,0.12))"}}><rect width="40" height="10" fill="#CF142B"/><rect y="10" width="40" height="10" fill="#00247D"/><rect y="20" width="40" height="10" fill="#FC0"/>{[0,1,2,3,4,5,6].map(function(j){return <circle key={j} cx={12+j*2.3} cy="15" r="0.8" fill="#fff"/>})}</svg>;
-  if(country==="MX") return <svg width={s} height={s} viewBox="0 0 40 30" style={{borderRadius:4,filter:"drop-shadow(0 1px 2px rgba(0,0,0,0.12))"}}><rect width="13.3" height="30" fill="#006847"/><rect x="13.3" width="13.4" height="30" fill="#fff"/><rect x="26.7" width="13.3" height="30" fill="#CE1126"/><circle cx="20" cy="15" r="3" fill="#6B3A2A"/></svg>;
-  if(country==="CL") return <svg width={s} height={s} viewBox="0 0 40 30" style={{borderRadius:4,filter:"drop-shadow(0 1px 2px rgba(0,0,0,0.12))"}}><rect width="40" height="30" fill="#D52B1E"/><rect y="0" width="40" height="15" fill="#fff"/><rect width="13.3" height="15" fill="#0039A6"/><polygon points="6.65,4 7.5,7 10.5,7 8,8.8 8.8,12 6.65,10 4.5,12 5.3,8.8 2.8,7 5.8,7" fill="#fff"/></svg>;
+function FlagSvg({country,size=32}){const s=size;const st={borderRadius:5,filter:"drop-shadow(0 1px 2px rgba(0,0,0,0.12))"};
+  if(country==="CO")return <svg width={s} height={s} viewBox="0 0 40 30" style={st}><rect width="40" height="15" fill="#FCD116"/><rect y="15" width="40" height="7.5" fill="#003893"/><rect y="22.5" width="40" height="7.5" fill="#CE1126"/></svg>;
+  if(country==="AR")return <svg width={s} height={s} viewBox="0 0 40 30" style={st}><rect width="40" height="30" fill="#fff"/><rect width="40" height="10" fill="#75AADB"/><rect y="20" width="40" height="10" fill="#75AADB"/><circle cx="20" cy="15" r="3.5" fill="#F6B40E"/></svg>;
+  if(country==="VE")return <svg width={s} height={s} viewBox="0 0 40 30" style={st}><rect width="40" height="10" fill="#CF142B"/><rect y="10" width="40" height="10" fill="#00247D"/><rect y="20" width="40" height="10" fill="#FC0"/></svg>;
+  if(country==="MX")return <svg width={s} height={s} viewBox="0 0 40 30" style={st}><rect width="13.3" height="30" fill="#006847"/><rect x="13.3" width="13.4" height="30" fill="#fff"/><rect x="26.7" width="13.3" height="30" fill="#CE1126"/><circle cx="20" cy="15" r="3" fill="#6B3A2A"/></svg>;
+  if(country==="CL")return <svg width={s} height={s} viewBox="0 0 40 30" style={st}><rect width="40" height="30" fill="#D52B1E"/><rect y="0" width="40" height="15" fill="#fff"/><rect width="13.3" height="15" fill="#0039A6"/><polygon points="6.65,4 7.5,7 10.5,7 8,8.8 8.8,12 6.65,10 4.5,12 5.3,8.8 2.8,7 5.8,7" fill="#fff"/></svg>;
   return null;
 }
 
-function OrbitingCountries(){
-  const[hovered,setHovered]=useState(null);
-  const items=[
-    {cc:"CO",code:"COP",name:"Colombia",angle:0,speed:24,radius:130},
-    {cc:"AR",code:"ARS",name:"Argentina",angle:72,speed:28,radius:130},
-    {cc:"VE",code:"VES",name:"Venezuela",angle:144,speed:32,radius:130},
-    {cc:"MX",code:"MXN",name:"México",angle:216,speed:22,radius:130},
-    {cc:"CL",code:"CLP",name:"Chile",angle:288,speed:26,radius:130},
-  ];
-  const particles=Array.from({length:12},function(_,i){return i});
-  return <div style={{position:"relative",width:320,height:320,margin:"32px auto"}}
-    onMouseEnter={function(){}}
-    onMouseLeave={function(){setHovered(null)}}>
-    {/* Orbital rings */}
-    <div style={{position:"absolute",top:"50%",left:"50%",width:260,height:260,marginTop:-130,marginLeft:-130,borderRadius:"50%",border:"1px solid rgba(130,10,209,0.08)",background:"radial-gradient(ellipse,rgba(130,10,209,0.03) 0%,transparent 70%)"}}/>
-    <div style={{position:"absolute",top:"50%",left:"50%",width:220,height:220,marginTop:-110,marginLeft:-110,borderRadius:"50%",border:"1px dashed rgba(130,10,209,0.06)"}}/>
-    {/* Particles */}
-    {particles.map(function(p){var a=p*30,r=100+Math.random()*60,px=Math.cos(a*Math.PI/180)*r,py=Math.sin(a*Math.PI/180)*r;return <div key={"p"+p} style={{position:"absolute",top:"50%",left:"50%",width:3+Math.random()*3,height:3+Math.random()*3,borderRadius:"50%",background:"rgba(130,10,209,"+(0.15+Math.random()*0.2)+")",marginTop:-1.5,marginLeft:-1.5,animation:"particleFloat "+(4+Math.random()*6)+"s ease-in-out infinite",animationDelay:(-Math.random()*6)+"s","--px":px+"px","--py":py+"px"}}/>})}
-    {/* Core sphere */}
-    <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:80,height:80,borderRadius:"50%",background:"radial-gradient(circle at 35% 35%,#A855F7,#820AD1 50%,#6B21A8 100%)",animation:"coreGlow 3s ease-in-out infinite",zIndex:10,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,borderRadius:"50%",background:"radial-gradient(circle at 30% 25%,rgba(255,255,255,0.35) 0%,transparent 50%)"}}/>
-      <span style={{color:"#fff",fontWeight:800,fontSize:14,zIndex:1,textShadow:"0 1px 4px rgba(0,0,0,0.2)",letterSpacing:-0.5}}>DA$HR</span>
-    </div>
-    {/* Inner glow */}
-    <div style={{position:"absolute",top:"50%",left:"50%",width:100,height:100,marginTop:-50,marginLeft:-50,borderRadius:"50%",background:"radial-gradient(circle,rgba(130,10,209,0.12) 0%,transparent 70%)",animation:"coreSpin 20s linear infinite",pointerEvents:"none"}}/>
-    {/* Orbiting flag coins */}
-    {items.map(function(item,i){return <div key={i} style={{position:"absolute",top:"50%",left:"50%",marginTop:-30,marginLeft:-30,animation:"orbit3d "+item.speed+"s linear infinite",animationPlayState:hovered!==null?"paused":"running","--start":item.angle+"deg","--radius":item.radius+"px",zIndex:hovered===i?20:5,cursor:"pointer"}}
-      onMouseEnter={function(){setHovered(i)}}
-      onMouseLeave={function(){setHovered(null)}}>
-      <div style={{width:60,height:60,borderRadius:18,background:"linear-gradient(145deg,#fff 0%,#f5f3ff 100%)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,boxShadow:hovered===i?"0 8px 32px rgba(130,10,209,0.25),0 0 20px rgba(130,10,209,0.15)":"0 4px 20px rgba(0,0,0,0.08),0 1px 4px rgba(0,0,0,0.04)",border:hovered===i?"1.5px solid rgba(130,10,209,0.3)":"1px solid rgba(0,0,0,0.06)",transition:"all 0.4s cubic-bezier(.22,1,.36,1)",transform:hovered===i?"scale(1.18)":"scale(1)",position:"relative",overflow:"hidden"}}>
-        <div style={{position:"absolute",top:0,left:0,right:0,height:"45%",background:"linear-gradient(180deg,rgba(255,255,255,0.7) 0%,transparent 100%)",borderRadius:"18px 18px 0 0",pointerEvents:"none"}}/>
-        <FlagSvg country={item.cc} size={28}/>
-        <span style={{fontSize:9,fontWeight:800,color:"#820AD1",letterSpacing:0.5,zIndex:1}}>{item.code}</span>
+// ══════════ GLOBO LATAM 3D (HERO) ══════════
+function Globe(){
+  const cx=210,cy=210,R=150;
+  const flags={CO:[150,148],VE:[300,150],MX:[108,236],CL:[176,318],AR:[252,322]};
+  const arcs=[["CO","VE"],["CO","MX"],["CO","CL"],["CO","AR"],["AR","CL"]];
+  const arc=(a,b)=>{const[x1,y1]=flags[a],[x2,y2]=flags[b];const mx=(x1+x2)/2,my=(y1+y2)/2;const dx=mx-cx,dy=my-cy;const k=0.35;return"M"+x1+","+y1+" Q"+(mx+dx*k)+","+(my+dy*k)+" "+x2+","+y2};
+  return <svg viewBox="0 0 420 420" style={{width:"100%",height:"100%",display:"block",overflow:"visible"}}>
+    <defs>
+      <radialGradient id="sphere" cx="38%" cy="32%" r="75%"><stop offset="0%" stopColor="#FFFFFF"/><stop offset="55%" stopColor="#F3E8FF"/><stop offset="100%" stopColor="#E4D3FA"/></radialGradient>
+      <radialGradient id="nglow2" cx="50%" cy="50%" r="50%"><stop offset="0%" stopColor="#A855F7" stopOpacity=".55"/><stop offset="100%" stopColor="#A855F7" stopOpacity="0"/></radialGradient>
+      <linearGradient id="flow2" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#820AD1" stopOpacity="0"/><stop offset="50%" stopColor="#C77DFF"/><stop offset="100%" stopColor="#820AD1" stopOpacity="0"/></linearGradient>
+      <clipPath id="ball"><circle cx={cx} cy={cy} r={R}/></clipPath>
+    </defs>
+    <circle cx={cx} cy={cy} r={R+18} fill="url(#nglow2)"/>
+    <circle cx={cx} cy={cy} r={R} fill="url(#sphere)" stroke="#E1D6F5" strokeWidth="1.5"/>
+    <g clipPath="url(#ball)" stroke="#C9B6EE" strokeWidth="1" fill="none" opacity=".55">
+      <g style={{transformOrigin:cx+"px "+cy+"px",animation:"spinSlow 26s linear infinite"}}>
+        {[-110,-70,-35,0,35,70,110].map((rx,i)=><ellipse key={i} cx={cx} cy={cy} rx={Math.abs(rx)} ry={R}/>)}
+      </g>
+      {[-90,-45,0,45,90].map((o,i)=><ellipse key={"p"+i} cx={cx} cy={cy+o} rx={R} ry={Math.max(8,R-Math.abs(o)*1.2)}/>)}
+    </g>
+    {arcs.map((a,i)=>(<g key={i}>
+      <path d={arc(a[0],a[1])} stroke="#E1D6F5" strokeWidth="1.4" fill="none"/>
+      <path d={arc(a[0],a[1])} stroke="url(#flow2)" strokeWidth="2.4" fill="none" strokeDasharray="14 186" style={{animation:"dashFlow "+(3+i*0.5)+"s linear infinite"}}/>
+      <circle r="3.2" fill="#820AD1"><animateMotion dur={(3+i*0.45)+"s"} repeatCount="indefinite" path={arc(a[0],a[1])}/></circle>
+    </g>))}
+    {Object.keys(flags).map(k=>{const[x,y]=flags[k];const hub=k==="CO";return <g key={k}>
+      <circle cx={x} cy={y} r="22" fill="url(#nglow2)" style={{transformOrigin:x+"px "+y+"px",animation:hub?"pulse 2.4s ease-in-out infinite":"none"}}/>
+      <g transform={"translate("+(x-20)+","+(y-20)+")"}>
+        <rect width="40" height="40" rx="12" fill="#fff" stroke={hub?"#820AD1":"#E1D6F5"} strokeWidth={hub?"2":"1"} style={{filter:"drop-shadow(0 6px 16px rgba(130,10,209,.2))"}}/>
+        <foreignObject x="8" y="9" width="24" height="22"><div style={{display:"flex",justifyContent:"center"}}><FlagSvg country={k} size={22}/></div></foreignObject>
+      </g>
+    </g>})}
+  </svg>;
+}
+
+// ══════════ RED LATAM VIVA ══════════
+function LatamNetwork(){
+  const[hov,setHov]=useState(null);
+  const nodes={MX:[110,72],CO:[300,176],VE:[438,120],CL:[176,352],AR:[346,350]};
+  const names={MX:"México",CO:"Colombia",VE:"Venezuela",CL:"Chile",AR:"Argentina"};
+  const links=[["CO","MX"],["CO","VE"],["CO","CL"],["CO","AR"],["AR","CL"],["VE","MX"]];
+  const path=(a,b)=>"M"+nodes[a][0]+","+nodes[a][1]+" L"+nodes[b][0]+","+nodes[b][1];
+  const active=(a,b)=>hov===null||hov===a||hov===b;
+  const corridors=k=>links.filter(l=>l[0]===k||l[1]===k).map(l=>names[l[0]===k?l[1]:l[0]]);
+  return <svg viewBox="0 0 560 430" style={{width:"100%",maxWidth:700,display:"block",margin:"0 auto",overflow:"visible"}}>
+    <defs>
+      <radialGradient id="ng" cx="50%" cy="50%" r="50%"><stop offset="0%" stopColor="#A855F7" stopOpacity=".5"/><stop offset="100%" stopColor="#A855F7" stopOpacity="0"/></radialGradient>
+      <linearGradient id="fl" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#820AD1" stopOpacity="0"/><stop offset="50%" stopColor="#A855F7"/><stop offset="100%" stopColor="#820AD1" stopOpacity="0"/></linearGradient>
+    </defs>
+    {links.map((l,i)=>{const on=active(l[0],l[1]);return <g key={"b"+i} style={{opacity:on?1:.18,transition:"opacity .3s"}}>
+      <path d={path(l[0],l[1])} stroke={on?"#D9C7F3":"#ECE7F5"} strokeWidth={hov&&(hov===l[0]||hov===l[1])?"2.4":"1.5"} fill="none" style={{transition:"stroke-width .3s,stroke .3s"}}/>
+      <path d={path(l[0],l[1])} stroke="url(#fl)" strokeWidth="2.4" fill="none" strokeDasharray="14 186" style={{animation:"dashFlow "+(3.2+i*0.5)+"s linear infinite"}}/>
+      <circle r="3.4" fill="#820AD1"><animateMotion dur={(3+i*0.4)+"s"} repeatCount="indefinite" path={path(l[0],l[1])}/></circle>
+    </g>})}
+    {Object.keys(nodes).map(k=>{const[x,y]=nodes[k];const hub=k==="CO";const on=hov===null||hov===k||links.some(l=>(l[0]===hov&&l[1]===k)||(l[1]===hov&&l[0]===k));return <g key={k} className="gnode" style={{opacity:on?1:.3}} onMouseEnter={()=>setHov(k)} onMouseLeave={()=>setHov(null)}>
+      <circle cx={x} cy={y} r="26" fill="url(#ng)" style={{transformOrigin:x+"px "+y+"px",animation:(hub||hov===k)?"pulse 2.2s ease-in-out infinite":"none"}}/>
+      <g transform={"translate("+(x-23)+","+(y-23)+")"}>
+        <rect width="46" height="46" rx="14" fill="#fff" stroke={hov===k?"#820AD1":hub?"#820AD1":"#E1D6F5"} strokeWidth={(hub||hov===k)?"2":"1"} style={{filter:"drop-shadow(0 6px 16px rgba(130,10,209,.18))",transition:"stroke .2s"}}/>
+        <foreignObject x="9" y="11" width="28" height="24"><div style={{display:"flex",justifyContent:"center"}}><FlagSvg country={k} size={24}/></div></foreignObject>
+      </g>
+      <text x={x} y={y+38} textAnchor="middle" fontSize="11" fontWeight="700" fill="#5C5470" fontFamily={T.font}>{k}</text>
+      {hov===k&&<g>
+        <rect x={x-78} y={y-86} width="156" height="56" rx="12" fill="#190A2E"/>
+        <text x={x} y={y-66} textAnchor="middle" fontSize="12" fontWeight="700" fill="#fff" fontFamily={T.font}>{names[k]}</text>
+        <text x={x} y={y-49} textAnchor="middle" fontSize="10" fill="#C77DFF" fontFamily={T.font}>Corredores: {corridors(k).length}</text>
+        <text x={x} y={y-37} textAnchor="middle" fontSize="9.5" fill="#9A93AD" fontFamily={T.font}>{corridors(k).join(" · ")}</text>
+      </g>}
+    </g>})}
+  </svg>;
+}
+
+function Illu({k}){const g="url(#ig)";const base=(ch)=><svg width="84" height="84" viewBox="0 0 84 84" className="eco-illu"><defs><linearGradient id="ig" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#A855F7"/><stop offset="100%" stopColor="#820AD1"/></linearGradient></defs><circle cx="42" cy="42" r="40" fill="#F4ECFE"/>{ch}</svg>;
+  if(k==="send")return base(<g><rect x="22" y="30" width="40" height="28" rx="6" fill="#fff" stroke="#E1D6F5" strokeWidth="1.5"/><path d="M24 34l18 12 18-12" fill="none" stroke="#C77DFF" strokeWidth="2"/><path d="M52 22l12 6-12 6 3-6z" fill={g}/><path d="M40 28h16" stroke={g} strokeWidth="3" strokeLinecap="round"/></g>);
+  if(k==="receive")return base(<g><path d="M24 40c0-8 8-12 18-12s18 4 18 12v10a6 6 0 01-6 6H30a6 6 0 01-6-6z" fill="#fff" stroke="#E1D6F5" strokeWidth="1.5"/><circle cx="42" cy="44" r="9" fill={g}/><text x="42" y="49" textAnchor="middle" fontSize="13" fontWeight="800" fill="#fff" fontFamily="Inter">$</text><path d="M42 14v12m0 0l-5-5m5 5l5-5" stroke={g} strokeWidth="2.6" fill="none" strokeLinecap="round" strokeLinejoin="round"/></g>);
+  if(k==="buy")return base(<g><circle cx="42" cy="42" r="19" fill="#26A17B"/><circle cx="42" cy="42" r="19" fill="none" stroke="#fff" strokeWidth="1.5" opacity=".5"/><text x="42" y="50" textAnchor="middle" fontSize="22" fontWeight="800" fill="#fff" fontFamily="Inter">₮</text><circle cx="60" cy="26" r="11" fill="#fff" stroke="#E1D6F5" strokeWidth="1.5"/><path d="M60 21v10m-5-5h10" stroke="#26A17B" strokeWidth="2.4" strokeLinecap="round"/></g>);
+  if(k==="sell")return base(<g><circle cx="42" cy="42" r="19" fill="#26A17B"/><circle cx="42" cy="42" r="19" fill="none" stroke="#fff" strokeWidth="1.5" opacity=".5"/><text x="42" y="50" textAnchor="middle" fontSize="22" fontWeight="800" fill="#fff" fontFamily="Inter">₮</text><circle cx="60" cy="26" r="11" fill="#fff" stroke="#E1D6F5" strokeWidth="1.5"/><path d="M55 26h10" stroke="#26A17B" strokeWidth="2.4" strokeLinecap="round"/></g>);
+  return null;
+}
+
+// ══════════ MONEDA USDT (verde oficial) ══════════
+function UsdtCoin(){
+  return <div style={{position:"relative",width:280,height:280,margin:"0 auto"}}>
+    <div style={{position:"absolute",inset:-30,borderRadius:"50%",background:"radial-gradient(circle,rgba(38,161,123,.28),transparent 65%)",animation:"auraShift 9s ease-in-out infinite",filter:"blur(8px)"}}/>
+    <div className="coin3d" style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:190,height:190}}>
+      <div style={{width:"100%",height:"100%",borderRadius:"50%",background:"radial-gradient(circle at 34% 30%,#2EBD8E,#26A17B 55%,#16795B 100%)",boxShadow:"0 30px 70px rgba(38,161,123,.4),inset 0 4px 14px rgba(255,255,255,.3),inset 0 -8px 18px rgba(0,0,0,.18)",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",inset:14,borderRadius:"50%",border:"2px solid rgba(255,255,255,.28)"}}/>
+        <div style={{position:"absolute",top:0,left:0,width:"40%",height:"100%",background:"linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent)",animation:"sheen 4.5s ease-in-out infinite"}}/>
+        <span style={{fontSize:96,fontWeight:800,color:"#fff",textShadow:"0 4px 16px rgba(0,0,0,.25)",lineHeight:1}}>₮</span>
       </div>
-      {hovered===i&&<div style={{position:"absolute",top:66,left:"50%",transform:"translateX(-50%)",background:"rgba(26,26,26,0.92)",backdropFilter:"blur(8px)",borderRadius:10,padding:"8px 14px",whiteSpace:"nowrap",zIndex:30,boxShadow:"0 4px 20px rgba(0,0,0,0.15)"}}>
-        <div style={{fontSize:12,fontWeight:700,color:"#fff"}}>{item.name}</div>
-        <div style={{fontSize:10,color:"#A78BFA",marginTop:2}}>Tasa en tiempo real</div>
-      </div>}
-    </div>})}
-    {/* Bottom shadow */}
-    <div style={{position:"absolute",bottom:10,left:"50%",transform:"translateX(-50%)",width:180,height:20,borderRadius:"50%",background:"radial-gradient(ellipse,rgba(130,10,209,0.08) 0%,transparent 70%)"}}/>
-  </div>
+    </div>
+    <div style={{position:"absolute",top:18,right:6,background:"#fff",borderRadius:14,padding:"8px 12px",boxShadow:T.s2,fontSize:12,fontWeight:700,color:T.usdt,animation:"floaty2 6.5s ease-in-out infinite",display:"flex",alignItems:"center",gap:6}}><span className="pulse-dot" style={{width:7,height:7,borderRadius:"50%",background:T.usdt}}/>USDT · en vivo</div>
+    <div style={{position:"absolute",bottom:30,left:0,background:"#fff",borderRadius:14,padding:"8px 12px",boxShadow:T.s2,fontSize:12,fontWeight:700,color:P,animation:"floaty3 7.5s ease-in-out infinite"}}>Atención real</div>
+    <div style={{position:"absolute",bottom:64,right:14,background:T.usdt,borderRadius:14,padding:"8px 12px",boxShadow:T.s2,fontSize:12,fontWeight:700,color:"#fff",animation:"floaty 8s ease-in-out infinite"}}>1 USDT ≈ COP</div>
+  </div>;
+}
+
+function TrustMeter(){
+  const[t,setT]=useState(0);
+  useEffect(()=>{const iv=setInterval(()=>setT(x=>x+1),2200);return()=>clearInterval(iv)},[]);
+  const heights=[0.55,0.72,0.48,0.83,0.66,0.9,0.6,0.78];
+  return <div style={{background:"#fff",border:"1px solid "+T.border,borderRadius:T.rCard,padding:26,boxShadow:T.s2}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+      <span style={{fontWeight:700,fontSize:15,color:T.ink}}>Mercado P2P · ahora</span>
+      <span className="live-ring" style={{display:"flex",alignItems:"center",gap:6,fontSize:11.5,fontWeight:600,color:T.waDeep,background:"#EAFBF1",padding:"5px 12px",borderRadius:T.rPill}}><span className="pulse-dot" style={{width:7,height:7,borderRadius:"50%",background:T.wa}}/>En vivo</span>
+    </div>
+    <div style={{display:"flex",alignItems:"flex-end",gap:8,height:120,marginBottom:16}}>
+      {heights.map((h,i)=><div key={i+"-"+t} style={{flex:1,height:(h*100)+"%",borderRadius:8,background:i%2?"linear-gradient(180deg,#C77DFF,#820AD1)":"linear-gradient(180deg,#A855F7,#6B21A8)",transformOrigin:"bottom",animation:"barRise .7s cubic-bezier(.22,1,.36,1) both",animationDelay:(i*0.06)+"s",opacity:.55+h*0.45}}/>)}
+    </div>
+    <div style={{display:"flex",justifyContent:"space-between",fontSize:12.5,color:T.ink2}}>
+      <span>Analizando 5 mercados</span><span style={{fontWeight:700,color:P}}>Tasa transparente ✓</span>
+    </div>
+  </div>;
 }
 
 export default function App(){
@@ -140,233 +253,272 @@ export default function App(){
   const[input,setInput]=useState("500.000");
   const[rates,setRates]=useState(FALLBACK_RATES);
   const[ready,setReady]=useState(false);
+  const[pulse,setPulse]=useState(0);
   useEffect(()=>{loadRates().then(r=>{setRates(r.rates);setReady(true)});var iv=setInterval(()=>{loadRates().then(r=>{setRates(r.rates)})},CACHE_MS);return()=>clearInterval(iv)},[]);
   const amt=pa(input),{result,rate}=calc(amt,fromC,toC,rates),fi=gc(fromC),ti=gc(toC);
-  const swap=()=>{const t=fromC;setFromC(toC);setToC(t);setInput(result>0?fm(result):"100.000")};
-  const hF=v=>{if(v===toC)setToC(fromC);setFromC(v)};
-  const hT=v=>{if(v===fromC)setFromC(toC);setToC(v)};
-  const openWA=()=>{const m=encodeURIComponent("Hola DASHR, quiero hacer una remesa: Envío: "+fm(amt)+" "+fromC+" Destino: "+toC+" Mi destinatario recibiría: "+fm(result)+" "+toC+" Cómo procedo?");window.open("https://wa.me/"+WA+"?text="+m,"_blank")};
+  const dispResult=useCountUp(result);
+  const bump=()=>setPulse(p=>p+1);
+  const swap=()=>{const t=fromC;setFromC(toC);setToC(t);setInput(result>0?fm(result):"100.000");bump()};
+  const hF=v=>{if(v===toC)setToC(fromC);setFromC(v);bump()};
+  const hT=v=>{if(v===fromC)setFromC(toC);setToC(v);bump()};
+  const openWA=(ctx)=>{const extra=ctx?(" ("+ctx+")"):"";const m=encodeURIComponent("Hola DASHR, quiero hacer una operación"+extra+": Envío: "+fm(amt)+" "+fromC+" Destino: "+toC+" Recibiría: "+fm(result)+" "+toC+" Cómo procedo?");window.open("https://wa.me/"+WA+"?text="+m,"_blank")};
   const toSim=()=>document.getElementById("sim")?.scrollIntoView({behavior:"smooth"});
-  const P="#820AD1";
 
   return(
-<div style={{fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",color:"#1a1a1a",background:"#fff",minHeight:"100vh"}}>
+<div style={{fontFamily:T.font,color:T.ink,background:"#fff",minHeight:"100vh",overflowX:"hidden"}}>
 <style>{CSS}</style>
 
 {/* NAV */}
-<nav style={{position:"sticky",top:0,zIndex:100,background:"rgba(255,255,255,0.92)",backdropFilter:"blur(20px) saturate(1.8)",borderBottom:"1px solid rgba(0,0,0,0.06)",padding:"0 clamp(16px,4vw,48px)",height:60,display:"flex",alignItems:"center",justifyContent:"space-between",gap:16}}>
-  <span style={{fontWeight:800,fontSize:22,color:P,letterSpacing:-0.5,flexShrink:0}}>DA$HR</span>
-  <div className="nav-links">{["Beneficios","Como funciona","Destinos","FAQ"].map((t,i)=><a key={i} href={"#s"+i} className="nav-link" style={{textDecoration:"none",color:"#888",whiteSpace:"nowrap"}}>{t}</a>)}</div>
-  <div className="nav-cta"><button onClick={toSim} className="btn-glow" style={{background:P,color:"#fff",border:"none",borderRadius:100,padding:"10px 20px",fontSize:13,fontWeight:600,cursor:"pointer",boxShadow:"0 2px 12px rgba(130,10,209,0.25)",whiteSpace:"nowrap",flexShrink:0}}>Cotizar ahora</button></div>
+<nav style={{position:"sticky",top:0,zIndex:100,background:"rgba(255,255,255,0.82)",backdropFilter:"blur(20px) saturate(1.8)",borderBottom:"1px solid "+T.border,padding:"0 clamp(16px,4vw,48px)",height:64,display:"flex",alignItems:"center",justifyContent:"space-between",gap:16}}>
+  <span style={{fontWeight:800,fontSize:23,color:P,letterSpacing:-0.6}}>DA$HR</span>
+  <div className="nav-links">{[["Ecosistema","s-eco"],["USDT","s-usdt"],["Red LATAM","s-red"],["Por qué DASH","s-why"],["FAQ","s-faq"]].map(([t,h],i)=><a key={i} href={"#"+h} className="nav-link" style={{textDecoration:"none",color:T.ink2,whiteSpace:"nowrap"}}>{t}</a>)}</div>
+  <button onClick={toSim} className="btn-glow" style={{background:P,color:"#fff",border:"none",borderRadius:T.rPill,padding:"11px 22px",fontSize:13.5,fontWeight:600,cursor:"pointer",boxShadow:"0 2px 12px rgba(130,10,209,0.25)",whiteSpace:"nowrap"}}>Cotizar ahora</button>
 </nav>
 
 {/* HERO */}
-<section className="hero-section" style={{padding:"clamp(40px,8vw,120px) clamp(16px,4vw,48px) 60px",display:"flex",flexWrap:"wrap",gap:"clamp(24px,5vw,80px)",alignItems:"center",maxWidth:1200,margin:"0 auto",position:"relative",overflow:"hidden"}}>
-  <div style={{position:"absolute",top:-200,right:-200,width:500,height:500,borderRadius:"50%",background:"radial-gradient(circle,rgba(130,10,209,0.06) 0%,transparent 70%)",pointerEvents:"none"}}/>
-
-  <div className="fade-up" style={{flex:"1 1 420px",minWidth:0,position:"relative",zIndex:1}}>
-    <div className="fade-up d1" style={{display:"inline-flex",alignItems:"center",gap:8,background:"#F3E8FF",borderRadius:100,padding:"8px 18px",marginBottom:28}}>
-      <span className="pulse-dot" style={{width:8,height:8,borderRadius:"50%",background:"#22C55E"}}/>
-      <span style={{fontSize:13,fontWeight:600,color:P}}>Tasa en tiempo real</span>
+<section className="hero-flex" style={{padding:"clamp(40px,6vw,84px) clamp(16px,4vw,48px) 70px",display:"flex",flexWrap:"wrap",gap:"clamp(24px,4vw,56px)",alignItems:"center",maxWidth:1200,margin:"0 auto",position:"relative"}}>
+  <div style={{position:"absolute",top:-150,right:-100,width:520,height:520,borderRadius:"50%",background:"radial-gradient(circle,rgba(168,85,247,.14),transparent 66%)",animation:"auraShift 12s ease-in-out infinite",pointerEvents:"none"}}/>
+  <div style={{flex:"1 1 400px",minWidth:0,position:"relative",zIndex:2,animation:"fadeUp .8s cubic-bezier(.22,1,.36,1) both"}}>
+    <div style={{display:"inline-flex",alignItems:"center",gap:9,background:T.tint,borderRadius:T.rPill,padding:"8px 16px",marginBottom:24,border:"1px solid "+T.borderHi}}>
+      <span className="pulse-dot" style={{width:8,height:8,borderRadius:"50%",background:T.wa}}/>
+      <span style={{fontSize:13,fontWeight:600,color:P}}>Infraestructura financiera LATAM</span>
     </div>
-    <h1 className="fade-up d2" style={{fontSize:"clamp(40px,5.5vw,60px)",fontWeight:800,lineHeight:1.04,letterSpacing:-2.5,margin:"0 0 20px"}}>{"Envía dinero a"}<br/><span style={{color:P,background:"linear-gradient(135deg,#820AD1,#A855F7)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Argentina</span><br/>{"y recíbelo "}<span style={{color:P,background:"linear-gradient(135deg,#820AD1,#A855F7)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>hoy</span></h1>
-    <p className="fade-up d3" style={{fontSize:17,color:"#666",lineHeight:1.6,margin:"0 0 8px"}}>Sin apps, sin registros. Todo por WhatsApp.</p>
-    <p className="fade-up d3" style={{fontSize:14,color:"#aaa",lineHeight:1.6,margin:"0 0 32px",maxWidth:440}}>La mejor tasa del mercado, sin comisiones ocultas. Tu dinero llega en minutos a Argentina, Venezuela y más.</p>
-    <div className="fade-up d4 hero-buttons" style={{display:"flex",flexDirection:"column",gap:12}}>
-      <button onClick={openWA} className="btn-glow" style={{background:P,color:"#fff",border:"none",borderRadius:14,padding:"18px 36px",fontSize:16,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,maxWidth:420,boxShadow:"0 4px 24px rgba(130,10,209,0.3)"}}><WASvg/> Cotizar por WhatsApp</button>
-      <button onClick={()=>document.getElementById("s1")?.scrollIntoView({behavior:"smooth"})} className="btn-outline" style={{background:"transparent",border:"2px solid "+P,borderRadius:14,padding:"16px 36px",fontSize:15,fontWeight:600,cursor:"pointer",color:P,maxWidth:260}}>{"¿Cómo funciona?"}</button>
-    </div>
-    <div className="fade-up d5" style={{display:"flex",gap:24,marginTop:28,fontSize:13,color:"#aaa"}}>
-      <span style={{display:"flex",alignItems:"center",gap:5}}><span className="pulse-dot" style={{width:7,height:7,borderRadius:"50%",background:"#22C55E"}}/>Tasa en vivo</span>
-      <span>{"🔒"} Seguro</span>
-      <span>{"⚡"} En minutos</span>
+    <h1 style={{fontSize:"clamp(38px,5vw,60px)",fontWeight:800,lineHeight:1.02,letterSpacing:-2.4,margin:"0 0 20px"}}>
+      Mueve dinero entre países<br/><span style={{background:"linear-gradient(120deg,#820AD1,#A855F7,#C77DFF)",backgroundSize:"200% auto",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",animation:"gradMove 6s ease infinite"}}>todos los días</span></h1>
+    <p style={{fontSize:18,color:T.ink,fontWeight:500,lineHeight:1.55,margin:"0 0 8px"}}>Remesas y USDT en una sola experiencia. Todo por WhatsApp.</p>
+    <p style={{fontSize:15,color:T.ink2,lineHeight:1.6,margin:"0 0 28px",maxWidth:440}}>Tasa de mercado en vivo, sin apps ni registros, con un asesor real en cada operación.</p>
+    <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
+      <button onClick={()=>openWA()} className="btn-wa" style={{background:T.wa,color:"#fff",border:"none",borderRadius:14,padding:"17px 30px",fontSize:16,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:9,boxShadow:"0 8px 24px rgba(37,211,102,0.32)"}}><WASvg/> Cotizar por WhatsApp</button>
+      <button onClick={toSim} className="btn-outline" style={{background:"transparent",border:"1.5px solid "+T.borderHi,borderRadius:14,padding:"17px 26px",fontSize:15,fontWeight:600,cursor:"pointer",color:P}}>Simular envío</button>
     </div>
   </div>
 
-  {/* SIMULATOR - Glassmorphism */}
-  <div id="sim" className="slide-in" style={{flex:"1 1 320px",maxWidth:460,minWidth:0,width:"100%"}}>
-    <div className="sim-card" style={{background:"rgba(255,255,255,0.92)",backdropFilter:"blur(20px) saturate(1.5)",borderRadius:24,padding:"clamp(20px,4vw,32px)",boxShadow:"0 8px 60px rgba(130,10,209,0.1)",border:"1px solid rgba(255,255,255,0.6)"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
-        <span style={{fontWeight:700,fontSize:19}}>Simulador de envío</span>
-        <span style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#22C55E",fontWeight:600,background:"#F0FDF4",padding:"5px 14px",borderRadius:100}}><span className="pulse-dot" style={{width:7,height:7,borderRadius:"50%",background:"#22C55E"}}/>{ready?"En vivo":"Cargando..."}</span>
-      </div>
-      <label style={{fontSize:11,fontWeight:700,color:"#aaa",textTransform:"uppercase",letterSpacing:0.8,display:"block",marginBottom:8}}>Tú envías</label>
-      <div className="input-focus sim-inputs" style={{display:"flex",gap:8,marginBottom:6}}>
-        <div style={{flex:1,display:"flex",alignItems:"center",gap:8,background:"#FAFAFA",border:"1.5px solid #e8e8e8",borderRadius:14,padding:"0 12px",transition:"all .2s",minWidth:0}}>
-          <span style={{fontSize:13,color:"#ccc",fontWeight:700,flexShrink:0}}>{fromC.substring(0,2)}</span>
-          <input type="text" inputMode="numeric" value={input} onChange={e=>{const r=pa(e.target.value);setInput(r>0?fm(r):"")}} className="sim-amount" style={{flex:1,fontSize:22,fontWeight:700,fontFamily:"'SF Mono','Fira Code',monospace",padding:"14px 0",border:"none",outline:"none",background:"transparent",color:"#1a1a1a",minWidth:0,width:"100%"}}/>
+  {/* VISUAL: globo + simulador encima */}
+  <div style={{flex:"1 1 420px",maxWidth:520,minWidth:0,width:"100%",position:"relative",zIndex:1,minHeight:440}}>
+    <div className="hero-globe" style={{position:"absolute",top:-20,left:"50%",transform:"translateX(-50%)",width:440,height:440,zIndex:0,opacity:.95}}><Globe/></div>
+    <div style={{position:"relative",zIndex:2,maxWidth:430,marginLeft:"auto",marginTop:60}}>
+      <div style={{position:"absolute",top:-24,left:-18,width:58,height:58,borderRadius:18,background:"linear-gradient(135deg,#26A17B,#16795B)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:26,boxShadow:T.s2,animation:"floaty2 6s ease-in-out infinite",zIndex:3}}>₮</div>
+      <div id="sim" className="sim-card" style={{background:"#fff",borderRadius:T.rCard,padding:"clamp(22px,4vw,28px)",boxShadow:T.s3,border:"1px solid "+T.border,position:"relative"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <span style={{fontWeight:700,fontSize:18.5,letterSpacing:-0.3}}>Simulador de envío</span>
+          <span className={ready?"live-ring":""} style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:T.waDeep,fontWeight:600,background:"#EAFBF1",padding:"5px 13px",borderRadius:T.rPill}}><span className="pulse-dot" style={{width:7,height:7,borderRadius:"50%",background:T.wa}}/>{ready?"En vivo":"Cargando..."}</span>
         </div>
-        <select value={fromC} onChange={e=>hF(e.target.value)} className="sim-select" style={{width:80,fontSize:14,fontWeight:600,padding:"14px 6px",background:"#FAFAFA",border:"1.5px solid #e8e8e8",borderRadius:14,color:P,cursor:"pointer",outline:"none",flexShrink:0}}>{CU.map(c=><option key={c.c} value={c.c}>{c.c}</option>)}</select>
-      </div>
-      <div style={{fontSize:11,color:"#ccc",marginBottom:12}}>{fi.sub}</div>
-      <div style={{display:"flex",justifyContent:"center",margin:"4px 0 12px"}}><button onClick={swap} className="btn-outline" style={{width:44,height:44,borderRadius:"50%",border:"1.5px solid #e8e8e8",background:"#fff",cursor:"pointer",fontSize:18,color:P,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.04)",transition:"all .3s cubic-bezier(.22,1,.36,1)"}} onMouseOver={e=>e.currentTarget.style.transform="rotate(180deg)"} onMouseOut={e=>e.currentTarget.style.transform=""}>{"↓"}</button></div>
-      <label style={{fontSize:11,fontWeight:700,color:"#aaa",textTransform:"uppercase",letterSpacing:0.8,display:"block",marginBottom:8}}>Ellos reciben</label>
-      <div className="sim-inputs" style={{display:"flex",gap:8,marginBottom:6}}>
-        <div style={{flex:1,display:"flex",alignItems:"center",gap:8,background:"linear-gradient(135deg,#F3E8FF,#EDE9FE)",border:"1.5px solid #E9D5FF",borderRadius:14,padding:"0 12px",transition:"all .3s",minWidth:0}}>
-          <span style={{fontSize:13,color:"#A78BFA",fontWeight:700,flexShrink:0}}>{toC.substring(0,2)}</span>
-          <input type="text" readOnly value={fm(result)} className="sim-amount" style={{flex:1,fontSize:22,fontWeight:700,fontFamily:"'SF Mono','Fira Code',monospace",padding:"14px 0",border:"none",outline:"none",background:"transparent",color:P,cursor:"default",minWidth:0,width:"100%",transition:"color .3s"}}/>
-        </div>
-        <select value={toC} onChange={e=>hT(e.target.value)} className="sim-select" style={{width:80,fontSize:14,fontWeight:600,padding:"14px 6px",background:"#FAFAFA",border:"1.5px solid #e8e8e8",borderRadius:14,color:P,cursor:"pointer",outline:"none",flexShrink:0}}>{CU.map(c=><option key={c.c} value={c.c}>{c.c}</option>)}</select>
-      </div>
-      <div style={{fontSize:11,color:"#ccc",marginBottom:16}}>{ti.sub}</div>
-      <div style={{fontSize:13,color:"#888",marginBottom:20,padding:"10px 14px",background:"#FAFAFA",borderRadius:10,transition:"all .3s"}}>{rate>0?"Tasa actualizada: 1 "+fromC+" = "+rate.toFixed(4)+" "+toC:"Ingresa un monto para ver la tasa"}</div>
-      <button onClick={openWA} disabled={result<=0} className="btn-glow" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,width:"100%",padding:18,border:"none",borderRadius:14,background:result>0?P:"#e8e8e8",color:"#fff",fontSize:17,fontWeight:700,cursor:result>0?"pointer":"not-allowed",fontFamily:"inherit",boxShadow:result>0?"0 4px 24px rgba(130,10,209,0.3)":"none"}}><WASvg/> {"Cotizar por WhatsApp →"}</button>
-      <p style={{textAlign:"center",fontSize:11,color:"#bbb",marginTop:12}}>Respuesta en menos de 2 minutos</p>
-    </div>
-  </div>
-</section>
-
-{/* STATS */}
-<section style={{background:"linear-gradient(135deg,#F3E8FF,#EDE9FE)",padding:"44px clamp(16px,4vw,48px)"}}>
-  <div style={{maxWidth:1000,margin:"0 auto",display:"flex",justifyContent:"space-around",flexWrap:"wrap",gap:24}}>
-    {[{n:"+2,500",l:"Envíos realizados"},{n:"< 30 min",l:"Tiempo promedio"},{n:"$0",l:"Comisiones ocultas"},{n:"4.9 "+STARS.charAt(0),l:"Calificación"}].map((s,i)=><div key={i} style={{textAlign:"center",minWidth:130}}><div style={{fontSize:34,fontWeight:800,color:P}}>{s.n}</div><div style={{fontSize:13,color:"#6B21A8",marginTop:4,opacity:0.6}}>{s.l}</div></div>)}
-  </div>
-</section>
-
-{/* PRODUCT FLOW - Stripe style */}
-<section style={{padding:"80px clamp(16px,4vw,48px)",background:"#fff",overflow:"hidden"}}>
-  <div style={{maxWidth:900,margin:"0 auto",textAlign:"center"}}>
-    <h2 className="fade-up" style={{fontSize:"clamp(28px,4vw,38px)",fontWeight:800,marginBottom:12}}>{"Así se ve "}<span style={{color:P}}>en acción</span></h2>
-    <p style={{color:"#999",fontSize:15,marginBottom:48}}>Tu dinero cruza fronteras en minutos</p>
-    <div style={{display:"flex",flexWrap:"wrap",justifyContent:"center",alignItems:"center",gap:20}}>
-      <div className="card-lift" style={{background:"#FAFAFA",borderRadius:20,padding:24,minWidth:200,boxShadow:"0 2px 12px rgba(0,0,0,0.04)",border:"1px solid #f0f0f0"}}>
-        <div style={{fontSize:11,color:"#aaa",fontWeight:600,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Envias</div>
-        <div style={{fontSize:28,fontWeight:800,color:"#1a1a1a",fontFamily:"'SF Mono',monospace"}}>$500.000</div>
-        <div style={{fontSize:13,color:"#888",marginTop:4}}>COP Colombia</div>
-      </div>
-      <div style={{fontSize:28,color:P,fontWeight:300}}>{"→"}</div>
-      <div style={{width:64,height:64,borderRadius:18,background:"linear-gradient(135deg,#820AD1,#A855F7)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 20px rgba(130,10,209,0.3)"}}>
-        <WASvg size={28} color="white"/>
-      </div>
-      <div style={{fontSize:28,color:P,fontWeight:300}}>{"→"}</div>
-      <div className="card-lift" style={{background:"linear-gradient(135deg,#F3E8FF,#EDE9FE)",borderRadius:20,padding:24,minWidth:200,boxShadow:"0 2px 12px rgba(130,10,209,0.08)",border:"1px solid #E9D5FF"}}>
-        <div style={{fontSize:11,color:"#6B21A8",fontWeight:600,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Reciben</div>
-        <div style={{fontSize:28,fontWeight:800,color:P,fontFamily:"'SF Mono',monospace"}}>{fm(calc(500000,"COP","ARS",rates).result)}</div>
-        <div style={{fontSize:13,color:"#7C3AED",marginTop:4}}>ARS Argentina</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-{/* CARDS */}
-<section style={{padding:"80px clamp(16px,4vw,48px)",background:"#F8F7FC"}}>
-  <div style={{maxWidth:1100,margin:"0 auto"}}>
-    <h2 style={{fontSize:"clamp(28px,4vw,38px)",fontWeight:800,marginBottom:12}}>Tu dinero en modo fácil</h2>
-    <p style={{color:"#999",fontSize:15,marginBottom:40}}>Simple, rápido y sin complicaciones</p>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:20}}>
-      {[{t:"Rápido",d:"Envía y recibe en minutos sin complicaciones",dt:"WhatsApp directo",ic:"⚡",cl:"#7C3AED"},{t:"Simple",d:"Sin apps, sin registros, sin formularios",dt:"Solo simula y escribe",ic:"💬",cl:"#9333EA"},{t:"Transparente",d:"Ves exactamente cuánto reciben antes de enviar",dt:"Tasa en tiempo real",ic:"👁",cl:"#A855F7"},{t:"Seguro",d:"Atención personal y seguimiento de cada operación",dt:"Soporte 24/7",ic:"🔒",cl:"#6B21A8"}].map((c,i)=>(
-        <div key={i} className={"card-lift fade-up d"+(i+1)} style={{borderRadius:22,overflow:"hidden",background:"#fff",boxShadow:"0 2px 16px rgba(130,10,209,0.06)",border:"1px solid #f0f0f0"}}>
-          <div style={{height:140,background:"linear-gradient(135deg,"+c.cl+",#C084FC)",display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
-            <span style={{fontSize:44,filter:"drop-shadow(0 2px 4px rgba(0,0,0,0.2))"}}>{c.ic}</span>
-            <h3 style={{position:"absolute",bottom:14,left:18,color:"#fff",fontSize:20,fontWeight:700,margin:0,fontStyle:"italic",textShadow:"0 1px 6px rgba(0,0,0,0.15)"}}>{c.t}</h3>
+        <label style={{fontSize:11,fontWeight:700,color:T.ink3,textTransform:"uppercase",letterSpacing:0.8,display:"block",marginBottom:8}}>Tú envías</label>
+        <div className="input-focus" style={{display:"flex",gap:8,marginBottom:6}}>
+          <div style={{flex:1,display:"flex",alignItems:"center",gap:8,background:T.tintSoft,border:"1.5px solid "+T.border,borderRadius:T.rField,padding:"0 12px",minWidth:0}}>
+            <span style={{fontSize:13,color:T.ink3,fontWeight:700}}>{fromC.substring(0,2)}</span>
+            <input type="text" inputMode="numeric" value={input} onChange={e=>{const r=pa(e.target.value);setInput(r>0?fm(r):"")}} className="sim-amount" style={{flex:1,fontSize:23,fontWeight:700,fontFamily:"inherit",padding:"14px 0",border:"none",outline:"none",background:"transparent",color:T.ink,minWidth:0,width:"100%",letterSpacing:-0.5}}/>
           </div>
-          <div style={{padding:"18px 20px 24px"}}><p style={{fontSize:14,color:"#555",lineHeight:1.5,margin:"0 0 8px"}}>{c.d}</p><span style={{fontSize:12,color:P,fontWeight:600}}>{c.dt}</span></div>
-        </div>))}
+          <select value={fromC} onChange={e=>hF(e.target.value)} style={{width:82,fontSize:14,fontWeight:600,padding:"14px 6px",background:T.tintSoft,border:"1.5px solid "+T.border,borderRadius:T.rField,color:P,cursor:"pointer",outline:"none",fontFamily:"inherit"}}>{CU.map(c=><option key={c.c} value={c.c}>{c.c}</option>)}</select>
+        </div>
+        <div style={{fontSize:11.5,color:T.ink3,marginBottom:10}}>{fi.sub}</div>
+        <div style={{display:"flex",justifyContent:"center",margin:"2px 0 10px"}}><button onClick={swap} className="swapbtn" style={{width:44,height:44,borderRadius:"50%",border:"1.5px solid "+T.border,background:"#fff",cursor:"pointer",fontSize:18,color:P,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:T.s1}}>↓</button></div>
+        <label style={{fontSize:11,fontWeight:700,color:T.ink3,textTransform:"uppercase",letterSpacing:0.8,display:"block",marginBottom:8}}>Ellos reciben</label>
+        <div key={pulse} style={{display:"flex",gap:8,marginBottom:6,borderRadius:T.rField,animation:"rateFlash .6s ease-out"}}>
+          <div style={{flex:1,display:"flex",alignItems:"center",gap:8,background:"linear-gradient(135deg,#820AD1,#6B21A8)",borderRadius:T.rField,padding:"0 14px",minWidth:0}}>
+            <span style={{fontSize:13,color:"rgba(255,255,255,.7)",fontWeight:700}}>{toC.substring(0,2)}</span>
+            <input type="text" readOnly value={fm(dispResult)} className="sim-amount" style={{flex:1,fontSize:24,fontWeight:800,fontFamily:"inherit",padding:"14px 0",border:"none",outline:"none",background:"transparent",color:"#fff",minWidth:0,width:"100%",letterSpacing:-0.5}}/>
+          </div>
+          <select value={toC} onChange={e=>hT(e.target.value)} style={{width:82,fontSize:14,fontWeight:600,padding:"14px 6px",background:T.tintSoft,border:"1.5px solid "+T.border,borderRadius:T.rField,color:P,cursor:"pointer",outline:"none",fontFamily:"inherit"}}>{CU.map(c=><option key={c.c} value={c.c}>{c.c}</option>)}</select>
+        </div>
+        <div style={{fontSize:11.5,color:T.ink3,marginBottom:14}}>{ti.sub}</div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,fontSize:12.5,color:T.ink2,marginBottom:16,padding:"11px 14px",background:T.tintSoft,borderRadius:12,border:"1px solid "+T.border}}>
+          <span style={{display:"flex",alignItems:"center",gap:7}}><span className="pulse-dot" style={{width:6,height:6,borderRadius:"50%",background:T.wa}}/>{rate>0?<b style={{color:T.ink}}>1 {fromC} = {rate.toFixed(4)} {toC}</b>:"Ingresa un monto"}</span>
+          <span style={{fontSize:10.5,color:T.ink3,fontWeight:600}}>Mercado P2P</span>
+        </div>
+        <button onClick={()=>openWA()} disabled={result<=0} className="btn-wa" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,width:"100%",padding:17,border:"none",borderRadius:14,background:result>0?T.wa:"#E6E2EE",color:"#fff",fontSize:16.5,fontWeight:700,cursor:result>0?"pointer":"not-allowed",fontFamily:"inherit",boxShadow:result>0?"0 8px 24px rgba(37,211,102,0.32)":"none"}}><WASvg/> Cotizar por WhatsApp →</button>
+        <p style={{textAlign:"center",fontSize:11.5,color:T.ink3,marginTop:12}}>🔒 Confirmamos la tasa antes de que envíes · respuesta &lt;2 min</p>
+      </div>
     </div>
   </div>
 </section>
 
-{/* BENEFITS */}
-<section id="s0" style={{padding:"80px clamp(16px,4vw,48px)",background:"#fff"}}>
-  <div style={{maxWidth:1100,margin:"0 auto",textAlign:"center"}}>
-    <h2 style={{fontSize:"clamp(28px,4vw,38px)",fontWeight:800,marginBottom:8}}>{"¿Por qué "}<span style={{color:P}}>+2,500 personas</span>{" eligen DASHR?"}</h2>
-    <p style={{color:"#999",fontSize:15,marginBottom:48}}>No somos un banco. Somos más rápidos, más baratos y más humanos.</p>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:16}}>
-      {[{i:"$",t:"Mejor tasa garantizada",d:"Comparamos en tiempo real para darte la tasa más competitiva."},{i:"⚡",t:"Recibe en minutos",d:"Tu dinero llega en menos de 30 minutos."},{i:"🔒",t:"100% seguro",d:"Encriptacion y verificacion de identidad."},{i:"🕐",t:"Disponible 24/7",d:"Disponible todos los días, incluso feriados."},{i:"👤",t:"Atención personalizada",d:"Un asesor real por WhatsApp. Nada de bots."},{i:"🌎",t:"Soporte en español",d:"Hablamos tu idioma. Sin menús automáticos."}].map((b,i)=>(
-        <div key={i} className={"card-lift fade-up d"+(i%4+1)} style={{background:"#fff",borderRadius:20,padding:"28px 24px",textAlign:"left",boxShadow:"0 2px 12px rgba(130,10,209,0.04)",border:"1px solid #f0f0f0"}}>
-          <div style={{width:50,height:50,borderRadius:16,background:"#F3E8FF",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,marginBottom:16}}>{b.i}</div>
-          <h3 style={{fontSize:16,fontWeight:700,marginBottom:8}}>{b.t}</h3>
-          <p style={{fontSize:14,color:"#888",lineHeight:1.6,margin:0}}>{b.d}</p>
+{/* PRUEBA SOCIAL */}
+<section style={{background:"linear-gradient(135deg,#820AD1,#6B21A8)",padding:"58px clamp(16px,4vw,48px)"}}>
+  <Reveal style={{maxWidth:1040,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:30}}>
+    {[{n:2500,p:"+",l:"Operaciones realizadas"},{n:5,p:"",l:"Países conectados"},{n:5,p:"<",s:" min",l:"Respuesta promedio"},{n:100,p:"",s:"%",l:"Atención personalizada"}].map((s,i)=>(
+      <div key={i} style={{textAlign:"center"}}>
+        <div style={{fontSize:"clamp(40px,5vw,56px)",fontWeight:800,color:"#fff",letterSpacing:-2,lineHeight:1}}><StatNum value={s.n} prefix={s.p} suffix={s.s}/></div>
+        <div style={{fontSize:14,color:"#E9D5FF",marginTop:8,fontWeight:500}}>{s.l}</div>
+      </div>))}
+  </Reveal>
+</section>
+
+{/* ECOSISTEMA */}
+<section id="s-eco" style={{padding:"86px clamp(16px,4vw,48px)",background:"#fff"}}>
+  <Reveal style={{maxWidth:760,margin:"0 auto",textAlign:"center"}}>
+    <span style={{color:P,fontWeight:700,fontSize:13,letterSpacing:.04,textTransform:"uppercase"}}>El ecosistema DASH</span>
+    <h2 style={{fontSize:"clamp(28px,4.2vw,42px)",fontWeight:800,margin:"12px 0 14px",letterSpacing:-1.4}}>Una sola plataforma para mover tu dinero</h2>
+    <p style={{color:T.ink2,fontSize:16.5,lineHeight:1.6,maxWidth:540,margin:"0 auto"}}>Enviar, recibir y operar con USDT, sin saltar entre apps. Todo por WhatsApp con un asesor real.</p>
+  </Reveal>
+  <div className="two-col" style={{maxWidth:1080,margin:"50px auto 0",display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:20}}>
+    {[{k:"send",t:"Enviar dinero",d:"A tu familia en 5 países de LATAM. Llega el mismo día."},{k:"receive",t:"Recibir dinero",d:"Recibe desde el exterior con tasa transparente y sin vueltas."},{k:"buy",t:"Comprar USDT",d:"Convierte tus pesos a dólar digital de forma simple y guiada."},{k:"sell",t:"Vender USDT",d:"Pasa tus USDT a pesos al instante, con cotización actualizada."}].map((c,i)=>(
+      <Reveal key={c.k} delay={i*0.08}>
+        <div className="eco" onClick={()=>openWA(c.t)} style={{cursor:"pointer",background:"#fff",border:"1px solid "+T.border,borderRadius:T.rCard,padding:"30px 26px",height:"100%",boxShadow:T.s1}}>
+          <Illu k={c.k}/>
+          <h3 style={{fontSize:19,fontWeight:700,margin:"18px 0 8px",letterSpacing:-0.4}}>{c.t}</h3>
+          <p style={{fontSize:14.5,color:T.ink2,lineHeight:1.6,margin:0}}>{c.d}</p>
+          <span style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:16,color:P,fontWeight:600,fontSize:14}}>Cotizar <span style={{fontSize:16}}>→</span></span>
+        </div>
+      </Reveal>))}
+  </div>
+</section>
+
+{/* USDT */}
+<section id="s-usdt" style={{padding:"86px clamp(16px,4vw,48px)",background:"linear-gradient(180deg,#FAF7FF,#F4ECFE)",position:"relative",overflow:"hidden"}}>
+  <div className="two-col" style={{maxWidth:1080,margin:"0 auto",display:"grid",gridTemplateColumns:"1fr 1fr",gap:"clamp(30px,5vw,64px)",alignItems:"center"}}>
+    <Reveal>
+      <span style={{display:"inline-flex",alignItems:"center",gap:7,color:T.usdt,fontWeight:700,fontSize:13,letterSpacing:.04,textTransform:"uppercase"}}><span style={{width:8,height:8,borderRadius:"50%",background:T.usdt}} className="pulse-dot"/>Dólar digital</span>
+      <h2 style={{fontSize:"clamp(28px,4.2vw,42px)",fontWeight:800,margin:"12px 0 16px",letterSpacing:-1.4}}>Compra y vende USDT fácilmente</h2>
+      <p style={{color:T.ink2,fontSize:16.5,lineHeight:1.65,marginBottom:24,maxWidth:460}}>Operaciones rápidas, atención personalizada y cotizaciones actualizadas. Tu dólar digital como parte natural de tu vida financiera en DASH — sin complicaciones de exchange.</p>
+      <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:28}}>
+        {[["⚡","Operación guiada por WhatsApp, paso a paso"],["📈","Cotización del mercado actualizada al momento"],["🤝","Un asesor real, no una pantalla de trading"]].map((f,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:13}}>
+            <span style={{flexShrink:0,width:40,height:40,borderRadius:12,background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,boxShadow:T.s1}}>{f[0]}</span>
+            <span style={{fontSize:15,color:T.ink,fontWeight:500}}>{f[1]}</span>
+          </div>))}
+      </div>
+      <button onClick={()=>openWA("USDT")} className="btn-wa" style={{background:T.wa,color:"#fff",border:"none",borderRadius:14,padding:"16px 32px",fontSize:16,fontWeight:700,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:9,boxShadow:"0 8px 24px rgba(37,211,102,0.3)"}}><WASvg/> Operar USDT por WhatsApp</button>
+    </Reveal>
+    <Reveal delay={0.1}><UsdtCoin/></Reveal>
+  </div>
+</section>
+
+{/* CONFIANZA EN VIVO */}
+<section style={{padding:"86px clamp(16px,4vw,48px)",background:"#fff"}}>
+  <div className="two-col" style={{maxWidth:1080,margin:"0 auto",display:"grid",gridTemplateColumns:"1fr 1fr",gap:"clamp(30px,5vw,64px)",alignItems:"center"}}>
+    <Reveal>
+      <span style={{color:P,fontWeight:700,fontSize:13,letterSpacing:.04,textTransform:"uppercase"}}>Tasa transparente</span>
+      <h2 style={{fontSize:"clamp(28px,4.2vw,40px)",fontWeight:800,margin:"12px 0 16px",letterSpacing:-1.4}}>No inventamos la tasa.<br/><span style={{color:P}}>La leemos del mercado, en vivo.</span></h2>
+      <p style={{color:T.ink2,fontSize:16.5,lineHeight:1.65,maxWidth:460}}>Analizamos el mercado P2P en tiempo real para darte una cotización real y competitiva. La ves antes de mover un solo peso — sin comisiones escondidas, sin letra chica.</p>
+    </Reveal>
+    <Reveal delay={0.1}><TrustMeter/></Reveal>
+  </div>
+</section>
+
+{/* RED LATAM */}
+<section id="s-red" style={{padding:"86px clamp(16px,4vw,48px)",background:"linear-gradient(180deg,#fff,#FAF7FF)",position:"relative",overflow:"hidden"}}>
+  <Reveal style={{maxWidth:680,margin:"0 auto 12px",textAlign:"center"}}>
+    <span style={{color:P,fontWeight:700,fontSize:13,letterSpacing:.04,textTransform:"uppercase"}}>Red financiera</span>
+    <h2 style={{fontSize:"clamp(28px,4.2vw,42px)",fontWeight:800,margin:"12px 0 14px",letterSpacing:-1.4}}>Una red operando en tiempo real</h2>
+    <p style={{color:T.ink2,fontSize:16.5,lineHeight:1.6,maxWidth:520,margin:"0 auto"}}>5 países conectados, dinero moviéndose todos los días. Pasa el mouse sobre un país para ver sus corredores activos.</p>
+  </Reveal>
+  <Reveal delay={0.1} style={{maxWidth:740,margin:"24px auto 0"}}><LatamNetwork/></Reveal>
+</section>
+
+{/* POR QUÉ DASH (COMPARATIVA) */}
+<section id="s-why" style={{padding:"86px clamp(16px,4vw,48px)",background:"#fff"}}>
+  <Reveal style={{maxWidth:760,margin:"0 auto 44px",textAlign:"center"}}>
+    <span style={{color:P,fontWeight:700,fontSize:13,letterSpacing:.04,textTransform:"uppercase"}}>Por qué DASH</span>
+    <h2 style={{fontSize:"clamp(28px,4.2vw,42px)",fontWeight:800,margin:"12px 0 0",letterSpacing:-1.4}}>La diferencia se siente desde el primer mensaje</h2>
+  </Reveal>
+  <Reveal style={{maxWidth:920,margin:"0 auto",display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}} className="two-col">
+    <div style={{background:"#FBF7FF",border:"1px solid "+T.border,borderRadius:T.rCard,padding:"28px 26px"}}>
+      <div style={{fontSize:13,fontWeight:700,color:T.ink3,textTransform:"uppercase",letterSpacing:.06,marginBottom:18}}>Otros servicios</div>
+      {["Formularios largos","Apps obligatorias","Tasas poco claras","Soporte lento por tickets"].map((t,i)=>(
+        <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 0",borderTop:i?"1px solid "+T.border:"none"}}>
+          <span style={{flexShrink:0,width:24,height:24,borderRadius:"50%",background:"#FBE3E3",color:"#C0392B",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700}}>✕</span>
+          <span style={{fontSize:15,color:T.ink2}}>{t}</span>
         </div>))}
     </div>
-  </div>
-</section>
-
-{/* HOW IT WORKS */}
-<section id="s1" style={{padding:"80px clamp(16px,4vw,48px)",background:"#F8F7FC"}}>
-  <div style={{maxWidth:900,margin:"0 auto",textAlign:"center"}}>
-    <h2 style={{fontSize:"clamp(28px,4vw,38px)",fontWeight:800,marginBottom:8}}>{"Enviar dinero nunca fue "}<span style={{color:P}}>tan fácil</span></h2>
-    <p style={{color:"#999",fontSize:15,marginBottom:48}}>3 pasos simples. Todo por WhatsApp.</p>
-    <div style={{display:"flex",flexWrap:"wrap",justifyContent:"center",gap:40,marginBottom:40}}>
-      {[{n:"01",ic:"💬",t:"Escríbenos por WhatsApp",d:"Dinos cuánto quieres enviar y a dónde."},{n:"02",ic:"💱",t:"Haz la transferencia",d:"Transfiere a nuestra cuenta local."},{n:"03",ic:"✅",t:"¡Dinero entregado!",d:"Reciben en minutos. Comprobante por WhatsApp."}].map((s,i)=>(
-        <div key={i} className={"fade-up d"+(i+1)} style={{flex:"1 1 220px",maxWidth:260}}>
-          <div className="card-lift" style={{width:68,height:68,borderRadius:20,background:"#F3E8FF",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px",fontSize:26,boxShadow:"0 4px 16px rgba(130,10,209,0.08)"}}>{s.ic}</div>
-          <div style={{color:P,fontWeight:800,fontSize:14,marginBottom:6}}>{s.n}</div>
-          <h3 style={{fontSize:16,fontWeight:700,marginBottom:8}}>{s.t}</h3>
-          <p style={{fontSize:13,color:"#999",lineHeight:1.6}}>{s.d}</p>
+    <div style={{background:"linear-gradient(160deg,#fff,#FAF4FF)",border:"2px solid "+P,borderRadius:T.rCard,padding:"28px 26px",boxShadow:T.s2,position:"relative"}}>
+      <div style={{position:"absolute",top:-13,right:22,background:P,color:"#fff",fontSize:12,fontWeight:700,padding:"5px 14px",borderRadius:T.rPill}}>DASH</div>
+      <div style={{fontSize:13,fontWeight:800,color:P,textTransform:"uppercase",letterSpacing:.06,marginBottom:18}}>Con DASH</div>
+      {["WhatsApp directo","Sin descargas ni registros","Mercado en vivo, transparente","Atención personalizada real"].map((t,i)=>(
+        <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 0",borderTop:i?"1px solid "+T.border:"none"}}>
+          <span style={{flexShrink:0,width:24,height:24,borderRadius:"50%",background:"#E5F8EF",color:T.waDeep,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700}}>✓</span>
+          <span style={{fontSize:15,color:T.ink,fontWeight:600}}>{t}</span>
         </div>))}
     </div>
-    <button onClick={openWA} className="btn-glow" style={{background:P,color:"#fff",border:"none",borderRadius:14,padding:"16px 40px",fontSize:16,fontWeight:600,cursor:"pointer",boxShadow:"0 4px 24px rgba(130,10,209,0.3)",display:"inline-flex",alignItems:"center",gap:8}}><WASvg size={16}/> {"Cotizar por WhatsApp →"}</button>
+  </Reveal>
+</section>
+
+{/* TESTIMONIOS */}
+<section style={{padding:"80px clamp(16px,4vw,48px)",background:"#FAF7FF"}}>
+  <Reveal style={{maxWidth:1000,margin:"0 auto 44px",textAlign:"center"}}>
+    <span style={{color:P,fontWeight:700,fontSize:13,letterSpacing:.04,textTransform:"uppercase"}}>Historias reales</span>
+    <h2 style={{fontSize:"clamp(28px,4vw,40px)",fontWeight:800,margin:"12px 0 0",letterSpacing:-1.2}}>Familias que ya confían en DASH</h2>
+  </Reveal>
+  <div style={{maxWidth:1040,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(290px,1fr))",gap:20}}>
+    {[{q:"Envié de Bogotá a Caracas y llegó el mismo día. No lo podía creer.",n:"Laura G.",city:"Bogotá",co:"CO"},{q:"La tasa fue transparente y mejor de lo que esperaba. Cero sorpresas.",n:"Martín R.",city:"Buenos Aires",co:"AR"},{q:"Todo el proceso fue por WhatsApp y muy rápido. Me atendió una persona real.",n:"Daniela P.",city:"Santiago",co:"CL"},{q:"Compré USDT por primera vez y me guiaron paso a paso. Muy fácil.",n:"José M.",city:"Ciudad de México",co:"MX"},{q:"Le mando a mi familia en Maracaibo cada mes. Siempre puntual.",n:"Andrés V.",city:"Medellín",co:"CO"},{q:"Mejor tasa que mi banco y sin filas ni formularios. Recomendado.",n:"Sofía L.",city:"Córdoba",co:"AR"}].map((t,i)=>(
+      <Reveal key={i} delay={(i%3)*0.07}>
+        <div className="card-lift" style={{background:"#fff",borderRadius:T.rCard,padding:28,boxShadow:T.s1,border:"1px solid "+T.border,height:"100%",position:"relative"}}>
+          <div style={{position:"absolute",top:20,right:24,fontSize:48,color:T.tint,fontWeight:800,lineHeight:1,fontFamily:"Georgia,serif"}}>&rdquo;</div>
+          <div style={{color:"#F5A623",marginBottom:12,fontSize:15,letterSpacing:2}}>{STARS}</div>
+          <p style={{fontSize:15.5,color:T.ink,lineHeight:1.65,marginBottom:20,fontWeight:500}}>{t.q}</p>
+          <div style={{display:"flex",alignItems:"center",gap:12,borderTop:"1px solid "+T.border,paddingTop:16}}>
+            <div style={{width:42,height:42,borderRadius:"50%",background:"linear-gradient(135deg,#A855F7,#820AD1)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:16}}>{t.n.charAt(0)}</div>
+            <div style={{flex:1}}><div style={{fontWeight:700,fontSize:14.5}}>{t.n}</div><div style={{fontSize:12.5,color:T.ink3}}>{t.city}</div></div>
+            <FlagSvg country={t.co} size={26}/>
+          </div>
+        </div>
+      </Reveal>))}
   </div>
 </section>
 
-{/* ORBITING COUNTRIES */}
-<section style={{padding:"80px clamp(16px,4vw,48px) 60px",background:"linear-gradient(180deg,#fff 0%,#F8F7FC 100%)",overflow:"hidden",position:"relative"}}>
-  <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:500,height:500,borderRadius:"50%",background:"radial-gradient(circle,rgba(130,10,209,0.04) 0%,transparent 60%)",pointerEvents:"none"}}/>
-  <div style={{maxWidth:600,margin:"0 auto",textAlign:"center",position:"relative"}}>
-    <h2 style={{fontSize:"clamp(26px,3.5vw,36px)",fontWeight:800,marginBottom:4}}>{"Conectamos "}<span style={{color:P}}>toda Latinoamérica</span></h2>
-    <p style={{color:"#aaa",fontSize:14,marginBottom:0}}>5 países, una sola plataforma</p>
-    <OrbitingCountries/>
-    <p style={{color:"#bbb",fontSize:13,marginTop:4}}>Pasa el mouse sobre las banderas</p>
-  </div>
-</section>
-
-{/* DESTINATIONS */}
-<section id="s2" style={{padding:"60px clamp(16px,4vw,48px)",background:"#F8F7FC"}}>
-  <div style={{maxWidth:900,margin:"0 auto"}}>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:20}}>
-      {[{c:"ARS",n:"Argentina",from:"Desde Colombia",pop:true,d:"Nuestro corredor principal. La mejor tasa COP a ARS."},{c:"VES",n:"Venezuela",from:"Desde Colombia, México, Chile",pop:false,d:"Envía bolívares desde 4 países. Sin apps."}].map((dest,i)=>(
-        <div key={i} className="card-lift" style={{background:"#fff",borderRadius:22,padding:28,border:i===0?"2px solid "+P:"1px solid #f0f0f0",textAlign:"left",position:"relative",boxShadow:i===0?"0 8px 30px rgba(130,10,209,0.12)":"0 2px 12px rgba(0,0,0,0.04)"}}>
-          {dest.pop&&<div style={{display:"inline-flex",alignItems:"center",gap:4,background:"#FEF9C3",border:"1px solid #FDE68A",borderRadius:100,padding:"5px 14px",fontSize:12,fontWeight:600,color:"#A16207",marginBottom:14}}>{"⭐"} Más popular</div>}
-          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}><span style={{fontSize:14,fontWeight:700,color:"#ccc"}}>{dest.c}</span><div><div style={{fontWeight:700,fontSize:22}}>{dest.n}</div><div style={{fontSize:12,color:"#999"}}>{dest.from}</div></div></div>
-          <p style={{fontSize:14,color:"#888",lineHeight:1.5,marginBottom:18}}>{dest.d}</p>
-          <button onClick={openWA} className="btn-glow" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,width:"100%",padding:14,border:i===0?"none":"1.5px solid "+P,borderRadius:14,background:i===0?P:"transparent",color:i===0?"#fff":P,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",boxShadow:i===0?"0 4px 20px rgba(130,10,209,0.25)":"none"}}><WASvg size={14} color={i===0?"white":"#820AD1"}/> {"Cotizar envío →"}</button>
-        </div>))}
-    </div>
-  </div>
-</section>
-
-{/* TESTIMONIALS */}
 <section style={{padding:"80px clamp(16px,4vw,48px)",background:"#fff"}}>
-  <div style={{maxWidth:1000,margin:"0 auto",textAlign:"center"}}>
-    <h2 style={{fontSize:"clamp(28px,4vw,38px)",fontWeight:800,marginBottom:8}}>{"Lo que dicen "}<span style={{color:P,fontStyle:"italic"}}>nuestros clientes</span></h2>
-    <p style={{color:"#999",fontSize:15,marginBottom:48}}>Miles de familias confían en DASHR</p>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:20}}>
-      {[{q:"Llevo 6 meses usando DASHR y es otra cosa. Mi mamá recibe la plata en menos de 20 minutos.",n:"Carolina M.",c:"Bogotá → Buenos Aires"},{q:"Por fin un servicio donde te atiende una persona real. Me respondieron a las 11pm un domingo.",n:"Andrés P.",c:"Medellín → Caracas"},{q:"Con DASHR recibo más pesos argentinos que con cualquier otra empresa. 100% recomendado.",n:"María L.",c:"Cali → Buenos Aires"},{q:"En 15 minutos mi familia en Venezuela ya tenía el dinero. Increíble la velocidad.",n:"Juan D.",c:"CDMX → Maracaibo"}].map((t,i)=>(
-        <div key={i} className={"card-lift fade-up d"+(i%4+1)} style={{background:"#fff",borderRadius:20,padding:26,textAlign:"left",boxShadow:"0 2px 12px rgba(0,0,0,0.04)",border:"1px solid #f0f0f0"}}>
-          <div style={{color:"#EAB308",marginBottom:10,fontSize:15,letterSpacing:2}}>{STARS}</div>
-          <p style={{fontSize:14,color:"#555",lineHeight:1.7,marginBottom:16}}>{'"'+t.q+'"'}</p>
-          <div style={{fontWeight:700,fontSize:14}}>{t.n}</div>
-          <div style={{fontSize:12,color:P,fontWeight:500}}>{t.c}</div>
-        </div>))}
+  <Reveal style={{maxWidth:900,margin:"0 auto",textAlign:"center"}}>
+    <h2 style={{fontSize:"clamp(26px,4vw,38px)",fontWeight:800,marginBottom:8,letterSpacing:-1.2}}>Así de fácil, en 3 pasos</h2>
+    <p style={{color:T.ink3,fontSize:15,marginBottom:48}}>Todo por WhatsApp. Sin apps, sin registros.</p>
+  </Reveal>
+  <div style={{maxWidth:900,margin:"0 auto",display:"flex",flexWrap:"wrap",justifyContent:"center",gap:40,marginBottom:40}}>
+    {[{n:"01",ic:"💬",t:"Escríbenos",d:"Dinos qué quieres hacer: enviar, recibir u operar USDT."},{n:"02",ic:"💱",t:"Confirma la tasa",d:"Te mostramos la cotización en vivo y haces la transferencia."},{n:"03",ic:"✅",t:"Listo",d:"Recibes en minutos. Comprobante por WhatsApp."}].map((s,i)=>(
+      <Reveal key={i} delay={i*0.1} style={{flex:"1 1 220px",maxWidth:260}}>
+        <div className="card-lift" style={{width:68,height:68,borderRadius:20,background:T.tint,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px",fontSize:26,boxShadow:T.s1}}>{s.ic}</div>
+        <div style={{color:P,fontWeight:800,fontSize:14,marginBottom:6,textAlign:"center"}}>{s.n}</div>
+        <h3 style={{fontSize:16.5,fontWeight:700,marginBottom:8,textAlign:"center",letterSpacing:-0.3}}>{s.t}</h3>
+        <p style={{fontSize:13.5,color:T.ink2,lineHeight:1.6,textAlign:"center"}}>{s.d}</p>
+      </Reveal>))}
+  </div>
+  <div style={{textAlign:"center"}}><button onClick={()=>openWA()} className="btn-wa" style={{background:T.wa,color:"#fff",border:"none",borderRadius:14,padding:"16px 36px",fontSize:16,fontWeight:700,cursor:"pointer",boxShadow:"0 8px 24px rgba(37,211,102,0.3)",display:"inline-flex",alignItems:"center",gap:8}}><WASvg size={16}/> Empezar por WhatsApp →</button></div>
+</section>
+
+<section id="s-faq" style={{padding:"80px clamp(16px,4vw,48px)",background:"#FAF7FF"}}>
+  <Reveal style={{maxWidth:700,margin:"0 auto"}}>
+    <h2 style={{fontSize:"clamp(26px,4vw,38px)",fontWeight:800,textAlign:"center",marginBottom:40,letterSpacing:-1.2}}>Preguntas <span style={{color:P}}>frecuentes</span></h2>
+    {["¿Qué puedo hacer con DASH?|Enviar y recibir dinero entre 5 países de LATAM, y comprar o vender USDT. Todo por WhatsApp.","¿Cómo funciona la compra/venta de USDT?|Nos escribes, te damos la cotización en vivo y te guiamos paso a paso. Sin exchange ni apps complicadas.","¿Cuánto tarda en llegar una remesa?|Típicamente menos de 30 minutos. Usualmente en menos de 15.","¿Cuánto cobran de comisión?|La tasa del simulador ya incluye todo. Sin cargos ocultos.","¿Necesito descargar algo?|No. Todo funciona por WhatsApp, sin apps ni registros.","¿Es seguro?|Verificación y comprobante de cada operación, con un asesor real acompañándote."].map(function(item,i){var p=item.split("|");return <Fq key={i} q={p[0]} a={p[1]} i={i}/>})}
+  </Reveal>
+</section>
+
+<section style={{padding:"84px clamp(16px,4vw,48px)",background:"linear-gradient(135deg,#820AD1,#6B21A8)",textAlign:"center",position:"relative",overflow:"hidden"}}>
+  <div style={{position:"absolute",top:-110,left:-110,width:320,height:320,borderRadius:"50%",border:"1px solid rgba(255,255,255,0.1)"}}/>
+  <div style={{position:"absolute",bottom:-90,right:-90,width:260,height:260,borderRadius:"50%",border:"1px solid rgba(255,255,255,0.08)"}}/>
+  <h2 style={{fontSize:"clamp(30px,5vw,46px)",fontWeight:800,marginBottom:12,color:"#fff",position:"relative",letterSpacing:-1.4}}>Tu dinero, sin fronteras.<br/>Empieza <span style={{color:"#E9D5FF"}}>hoy</span>.</h2>
+  <p style={{fontSize:16,color:"rgba(255,255,255,0.78)",maxWidth:480,margin:"0 auto 32px"}}>Envía, recibe u opera USDT. Un WhatsApp y listo.</p>
+  <button onClick={()=>openWA()} className="btn-glow" style={{background:"#fff",color:P,border:"none",borderRadius:T.rPill,padding:"18px 44px",fontSize:17,fontWeight:700,cursor:"pointer",boxShadow:"0 10px 30px rgba(0,0,0,0.2)",display:"inline-flex",alignItems:"center",gap:9,position:"relative"}}><WASvg size={18} color="#820AD1"/> Cotizar ahora →</button>
+</section>
+
+<footer style={{background:"#15071F",padding:"56px clamp(16px,4vw,48px) 36px",fontSize:14,color:"#8A8398"}}>
+  <div style={{maxWidth:1080,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:32}}>
+    <div style={{gridColumn:"1 / -1",maxWidth:320}}>
+      <span style={{fontWeight:800,fontSize:22,color:"#A855F7"}}>DA$HR</span>
+      <p style={{marginTop:10,lineHeight:1.6}}>Remesas y USDT para toda Latinoamérica. Rápido, transparente y humano.</p>
+      <div style={{display:"flex",gap:12,marginTop:18}}>
+        <a href={"https://wa.me/"+WA} target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" style={{width:40,height:40,borderRadius:12,background:"rgba(37,211,102,.15)",display:"flex",alignItems:"center",justifyContent:"center"}}><WASvg size={18} color="#25D366"/></a>
+        <a href={IG} target="_blank" rel="noopener noreferrer" aria-label="Instagram" style={{width:40,height:40,borderRadius:12,background:"rgba(168,85,247,.15)",display:"flex",alignItems:"center",justifyContent:"center"}}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C77DFF" strokeWidth="2"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="#C77DFF" stroke="none"/></svg></a>
+      </div>
+    </div>
+    <div>
+      <div style={{color:"#fff",fontWeight:700,fontSize:13,marginBottom:14}}>Países</div>
+      {["🇨🇴 Colombia","🇦🇷 Argentina","🇻🇪 Venezuela","🇲🇽 México","🇨🇱 Chile"].map((c,i)=><div key={i} style={{marginBottom:9}}>{c}</div>)}
+    </div>
+    <div>
+      <div style={{color:"#fff",fontWeight:700,fontSize:13,marginBottom:14}}>Servicios</div>
+      {[["Enviar dinero","#s-eco"],["Recibir dinero","#s-eco"],["Comprar USDT","#s-usdt"],["Vender USDT","#s-usdt"]].map(([t,h],i)=><div key={i} style={{marginBottom:9}}><a href={h} className="flink" style={{color:"#8A8398",textDecoration:"none"}}>{t}</a></div>)}
+    </div>
+    <div>
+      <div style={{color:"#fff",fontWeight:700,fontSize:13,marginBottom:14}}>Legal</div>
+      {[["Términos y condiciones","#"],["Política de privacidad","#"],["Preguntas frecuentes","#s-faq"],["Contacto","https://wa.me/"+WA]].map(([t,h],i)=><div key={i} style={{marginBottom:9}}><a href={h} target={h.startsWith("http")?"_blank":undefined} rel="noopener noreferrer" className="flink" style={{color:"#8A8398",textDecoration:"none"}}>{t}</a></div>)}
     </div>
   </div>
-</section>
-
-{/* FAQ */}
-<section id="s3" style={{padding:"80px clamp(16px,4vw,48px)",background:"#F8F7FC"}}>
-  <div style={{maxWidth:700,margin:"0 auto"}}>
-    <h2 style={{fontSize:"clamp(28px,4vw,38px)",fontWeight:800,textAlign:"center",marginBottom:40}}>{"Preguntas "}<span style={{color:P}}>frecuentes</span></h2>
-    {["¿Es seguro enviar dinero con DASHR?|Sí. Encriptación de nivel bancario, verificación de identidad y comprobante de cada operación.","¿Cuánto tarda en llegar?|Típicamente menos de 30 minutos. Usualmente en menos de 15.","¿Cuánto cobran de comisión?|La tasa del simulador ya incluye todo. Sin cargos ocultos.","¿Necesito descargar algo?|No. Todo funciona por WhatsApp. Sin apps ni registros.","¿Qué métodos de pago aceptan?|Bancolombia, Nequi, Daviplata y más. Te damos los datos por WhatsApp.","¿Monto mínimo y máximo?|Mínimo $50.000 COP. Para montos grandes consulta por WhatsApp."].map(function(item,i){var parts=item.split("|");return <Fq key={i} q={parts[0]} a={parts[1]} i={i}/>})}
+  <div style={{maxWidth:1080,margin:"36px auto 0",borderTop:"1px solid rgba(255,255,255,.07)",paddingTop:22,display:"flex",flexWrap:"wrap",justifyContent:"space-between",gap:10,fontSize:12.5,color:"#5A5470"}}>
+    <span>© 2026 DASHR. Todos los derechos reservados.</span>
+    <span>Hecho con 💜 para Latinoamérica</span>
   </div>
-</section>
-
-{/* CTA */}
-<section style={{padding:"80px clamp(16px,4vw,48px)",background:"linear-gradient(135deg,#820AD1,#6B21A8)",textAlign:"center",position:"relative",overflow:"hidden"}}>
-  <div style={{position:"absolute",top:-100,left:-100,width:300,height:300,borderRadius:"50%",background:"rgba(255,255,255,0.05)",pointerEvents:"none"}}/>
-  <div style={{position:"absolute",bottom:-80,right:-80,width:250,height:250,borderRadius:"50%",background:"rgba(255,255,255,0.03)",pointerEvents:"none"}}/>
-  <h2 className="fade-up" style={{fontSize:"clamp(32px,5vw,48px)",fontWeight:800,marginBottom:12,color:"#fff",position:"relative"}}>{"Tu dinero puede llegar "}<span style={{color:"#E9D5FF"}}>hoy mismo</span></h2>
-  <p className="fade-up d1" style={{fontSize:16,color:"rgba(255,255,255,0.7)",maxWidth:480,margin:"0 auto 32px"}}>Escríbenos ahora y envía con la mejor tasa del mercado.</p>
-  <button onClick={openWA} className="btn-glow fade-up d2" style={{background:"#fff",color:P,border:"none",borderRadius:100,padding:"18px 48px",fontSize:17,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 24px rgba(0,0,0,0.2)",display:"inline-flex",alignItems:"center",gap:8,position:"relative"}}><WASvg size={18} color="#820AD1"/> {"Cotizar ahora →"}</button>
-</section>
-
-{/* FOOTER */}
-<footer style={{background:"#0f0f1a",padding:"40px clamp(16px,4vw,48px)",fontSize:13}}>
-  <div style={{maxWidth:900,margin:"0 auto",display:"flex",flexWrap:"wrap",justifyContent:"space-between",alignItems:"center",gap:16}}>
-    <div><span style={{fontWeight:800,fontSize:20,color:P}}>DA$HR</span><p style={{color:"#555",marginTop:8}}>Remesas rápidas, seguras y sin comisiones ocultas.</p></div>
-    <div style={{display:"flex",gap:24}}>{[["WhatsApp","https://wa.me/"+WA],["Beneficios","#s0"],["FAQ","#s3"]].map(([t,h],i)=><a key={i} href={h} target={h.startsWith("http")?"_blank":undefined} rel="noopener noreferrer" className="nav-link" style={{color:"#555",textDecoration:"none"}}>{t}</a>)}</div>
-  </div>
-  <div style={{maxWidth:900,margin:"20px auto 0",textAlign:"center",color:"#333",fontSize:12}}>{"© 2026 DASHR Remesas. Todos los derechos reservados."}</div>
 </footer>
+
+<div className="mwa" style={{position:"fixed",bottom:14,left:14,right:14,zIndex:120}}>
+  <button onClick={()=>openWA()} className="btn-wa" style={{width:"100%",justifyContent:"center",background:T.wa,color:"#fff",border:"none",borderRadius:14,padding:16,fontSize:16,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:8,boxShadow:"0 10px 30px rgba(37,211,102,0.45)",fontFamily:"inherit"}}><WASvg size={18}/> Cotizar por WhatsApp</button>
+</div>
 </div>);
 }
