@@ -610,7 +610,7 @@ function UsdtPanel({rates,since}){
   const FIATS=[["COP","Colombia"],["ARS","Argentina"],["VES","Venezuela"],["MXN","México"],["CLP","Chile"]];
   const[cur,setCur]=useState("COP");
   const ref=(rates&&rates[cur])?rates[cur]:0;
-    const SP={COP:0.035,VES:0.03,ARS:0.03,MXN:0.035,CLP:0.035};
+      const SP={COP:0.035,VES:0.03,ARS:0.05,MXN:0.035,CLP:0.035};
   const sp=SP[cur]||0.03;
   const compra=Math.round(ref*(1-sp)), venta=Math.round(ref*(1+sp));
   const cRef=useCountUp(Math.round(ref)), cBuy=useCountUp(compra), cSell=useCountUp(venta);
