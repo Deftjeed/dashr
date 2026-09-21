@@ -609,15 +609,54 @@ function BusinessLines(){
   </div>;
 }
 
+function parseUsdt(s){
+  if(typeof s!=="string")return NaN;
+  const t=s.trim().replace(/\s/g,"");
+  if(t===""||!/^[0-9.,]+$/.test(t))return NaN;
+  const li=Math.max(t.lastIndexOf("."),t.lastIndexOf(","));
+  let val;
+  if(li>=0){
+    const after=t.slice(li+1);
+    val=(after.length===1||after.length===2)
+      ? parseFloat(t.slice(0,li).replace(/[.,]/g,"")+"."+after)
+      : parseFloat(t.replace(/[.,]/g,""));
+  }else val=parseFloat(t);
+  return Number.isFinite(val)?Math.round(val*100)/100:NaN;
+}
+
 function UsdtPanel({rates,since}){
   const FIATS=[["COP","Colombia"],["ARS","Argentina"],["VES","Venezuela"],["MXN","México"],["CLP","Chile"]];
   const[cur,setCur]=useState("COP");
-  const ref=(rates&&rates[cur])?rates[cur]:0;
-      const SP={COP:0.035,VES:0.03,ARS:0.05,MXN:0.035,CLP:0.035};
+  const[mode,setMode]=useState("sell"); // 'sell' = cliente vende (precio compra DASH) · 'buy' = cliente compra (precio venta DASH)
+  const[qty,setQty]=useState("60");
+  const[confirming,setConfirming]=useState(false);
+  const ref=(rates&&rates[cur]>0)?rates[cur]:0;
+  const SP={COP:0.035,VES:0.03,ARS:0.05,MXN:0.035,CLP:0.035};
   const sp=SP[cur]||0.03;
-  const compra=Math.round(ref*(1-sp)), venta=Math.round(ref*(1+sp));
+  const compra=Math.round(ref*(1-sp)), venta=Math.round(ref*(1+sp)); // compra=DASH compra / venta=DASH vende
   const cRef=useCountUp(Math.round(ref)), cBuy=useCountUp(compra), cSell=useCountUp(venta);
   const f=n=>n.toLocaleString("es-CO");
+  // --- lógica del simulador ---
+  const MAX_USDT=100000000;
+  const priceOk=ref>0&&compra>0&&venta>0;
+  const price=mode==="sell"?compra:venta;
+  const parsed=parseUsdt(qty);
+  const qtyValid=Number.isFinite(parsed)&&parsed>0&&parsed<=MAX_USDT;
+  // aritmética segura: (usdt·100 entero) × precio entero / 100 → COP entero, sin ruido float
+  const total=(priceOk&&qtyValid)?Math.round((Math.round(parsed*100)*price)/100):0;
+  const cTotal=useCountUp(total);
+  const qDisp=qtyValid?parsed.toLocaleString("es-CO",{maximumFractionDigits:2}):"";
+  const reset=fn=>(...a)=>{setConfirming(false);fn(...a);};
+  const pickMode=m=>{setMode(m);setConfirming(false);};
+  const openWAsim=()=>{
+    if(!priceOk||!qtyValid)return;
+    const msg=mode==="sell"
+      ? `Hola DASH, quiero vender ${qDisp} USDT.\nCotización mostrada: $${f(price)} ${cur}/USDT.\nTotal estimado: $${f(total)} ${cur}.\nQuiero continuar con la operación.`
+      : `Hola DASH, quiero comprar ${qDisp} USDT.\nCotización mostrada: $${f(price)} ${cur}/USDT.\nTotal estimado: $${f(total)} ${cur}.\nQuiero continuar con la operación.`;
+    window.open("https://wa.me/"+WA+"?text="+encodeURIComponent(msg),"_blank");
+  };
+  const isSell=mode==="sell";
+  const accent=isSell?T.usdt:P;
   return <div style={{position:"relative",maxWidth:400,margin:"0 auto",paddingTop:78}}>
     <div className="coin3d" style={{position:"absolute",top:-2,left:"50%",marginLeft:-76,width:152,height:152,zIndex:3}}>
       <div style={{position:"absolute",inset:-18,borderRadius:"50%",background:"radial-gradient(circle,rgba(38,161,123,.32),transparent 65%)",animation:"auraShift 9s ease-in-out infinite",filter:"blur(6px)"}}/>
@@ -639,21 +678,59 @@ function UsdtPanel({rates,since}){
         <div style={{fontSize:11,color:T.ink3,fontWeight:600,textTransform:"uppercase",letterSpacing:.7}}>Precio de referencia</div>
         <div key={Math.round(ref)+cur} style={{fontSize:34,fontWeight:800,color:T.usdt,letterSpacing:-1,marginTop:3,textShadow:"0 2px 16px rgba(38,161,123,.25)",animation:"priceUp .6s ease-out"}}>{f(cRef)} <span style={{fontSize:15,color:T.ink3,fontWeight:600}}>{cur}</span></div>
       </div>
-      <div style={{display:"flex",gap:12,marginBottom:18}}>
-        <div style={{flex:1,background:"#F1FAF6",border:"1px solid #D6F0E4",borderRadius:16,padding:"14px 15px"}}>
-          <div style={{fontSize:10.5,color:T.usdt,fontWeight:700,letterSpacing:.4}}>COMPRAMOS USDT</div>
-          <div style={{fontSize:21,fontWeight:800,color:T.ink,letterSpacing:-0.5,marginTop:3}}>{f(cBuy)}</div>
-          <div style={{fontSize:10,color:T.ink3,marginTop:1}}>{cur} por USDT</div>
-        </div>
-        <div style={{flex:1,background:T.tintSoft,border:"1px solid "+T.border,borderRadius:16,padding:"14px 15px"}}>
-          <div style={{fontSize:10.5,color:P,fontWeight:700,letterSpacing:.4}}>VENDEMOS USDT</div>
-          <div style={{fontSize:21,fontWeight:800,color:T.ink,letterSpacing:-0.5,marginTop:3}}>{f(cSell)}</div>
-          <div style={{fontSize:10,color:T.ink3,marginTop:1}}>{cur} por USDT</div>
-        </div>
+      {/* Selector VENDER / COMPRAR (tarjetas seleccionables) */}
+      <div style={{display:"flex",gap:12,marginBottom:16}}>
+        <button onClick={()=>pickMode("sell")} style={{flex:1,textAlign:"left",cursor:"pointer",fontFamily:"inherit",background:isSell?"#F1FAF6":"#fff",border:"1.5px solid "+(isSell?"#B8E6D2":T.border),borderRadius:16,padding:"12px 14px",transition:"all .18s",boxShadow:isSell?T.s1:"none"}}>
+          <div style={{fontSize:11,color:T.usdt,fontWeight:800,letterSpacing:.3}}>VENDER USDT</div>
+          <div style={{fontSize:15,fontWeight:800,color:T.ink,letterSpacing:-0.4,marginTop:2}}>{priceOk?"$"+f(cBuy):"—"}</div>
+          <div style={{fontSize:9.5,color:T.ink3,marginTop:1}}>te pagamos · {cur}/USDT</div>
+        </button>
+        <button onClick={()=>pickMode("buy")} style={{flex:1,textAlign:"left",cursor:"pointer",fontFamily:"inherit",background:!isSell?T.tintSoft:"#fff",border:"1.5px solid "+(!isSell?"#E4D4F5":T.border),borderRadius:16,padding:"12px 14px",transition:"all .18s",boxShadow:!isSell?T.s1:"none"}}>
+          <div style={{fontSize:11,color:P,fontWeight:800,letterSpacing:.3}}>COMPRAR USDT</div>
+          <div style={{fontSize:15,fontWeight:800,color:T.ink,letterSpacing:-0.4,marginTop:2}}>{priceOk?"$"+f(cSell):"—"}</div>
+          <div style={{fontSize:9.5,color:T.ink3,marginTop:1}}>pagas · {cur}/USDT</div>
+        </button>
       </div>
-      <button onClick={()=>openWAg("DASH USDT ("+cur+")")} className="btn-glow" style={{width:"100%",justifyContent:"center",background:T.usdt,color:"#fff",border:"none",borderRadius:14,padding:15,fontSize:15.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:8,boxShadow:"0 8px 22px rgba(38,161,123,.32)"}}><WASvg size={17}/> Operar USDT</button>
+
+      {!confirming ? <>
+        {/* Entrada de cantidad */}
+        <label style={{display:"block",fontSize:12,color:T.ink2,fontWeight:600,marginBottom:7}}>{isSell?"¿Cuánto USDT quieres vender?":"¿Cuánto USDT quieres comprar?"}</label>
+        <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:"1.5px solid "+(qty&&!qtyValid?"#F0B8B8":T.border),borderRadius:14,padding:"4px 14px",marginBottom:14}}>
+          <input value={qty} onChange={e=>reset(setQty)(e.target.value)} inputMode="decimal" placeholder="0" aria-label="Cantidad de USDT"
+            style={{flex:1,border:"none",outline:"none",background:"transparent",fontFamily:"inherit",fontSize:26,fontWeight:800,color:T.ink,letterSpacing:-0.6,padding:"12px 0",width:"100%",minWidth:0}}/>
+          <span style={{fontSize:14,fontWeight:800,color:accent}}>USDT</span>
+        </div>
+
+        {/* Resultado / validación */}
+        {!priceOk
+          ? <div style={{background:"#FBF0F0",border:"1px solid #F3D6D6",borderRadius:14,padding:"14px 16px",fontSize:13,fontWeight:600,color:"#B4453E",textAlign:"center",marginBottom:14}}>Cotización temporalmente no disponible.</div>
+          : !qtyValid
+          ? <div style={{background:"#FBF0F0",border:"1px solid #F3D6D6",borderRadius:14,padding:"14px 16px",fontSize:13,fontWeight:600,color:"#B4453E",textAlign:"center",marginBottom:14}}>Ingresa una cantidad válida de USDT.</div>
+          : <div style={{background:isSell?"#F1FAF6":T.tintSoft,border:"1px solid "+(isSell?"#D6F0E4":T.border),borderRadius:16,padding:"16px 18px",marginBottom:14}}>
+              <div style={{fontSize:11,color:T.ink3,fontWeight:600,textTransform:"uppercase",letterSpacing:.5}}>{isSell?"Recibirás aproximadamente":"Pagarás aproximadamente"}</div>
+              <div style={{fontSize:30,fontWeight:800,color:accent,letterSpacing:-1,marginTop:3}}>${f(cTotal)} <span style={{fontSize:14,color:T.ink3,fontWeight:600}}>{cur}</span></div>
+              <div style={{fontSize:11.5,color:T.ink2,marginTop:5,fontWeight:600}}>{isSell?"Tasa de compra":"Tasa de venta"}: ${f(price)} {cur} / USDT</div>
+            </div>}
+
+        <button onClick={()=>setConfirming(true)} disabled={!priceOk||!qtyValid} className="btn-glow"
+          style={{width:"100%",justifyContent:"center",background:(!priceOk||!qtyValid)?"#C9C6D2":T.usdt,color:"#fff",border:"none",borderRadius:14,padding:15,fontSize:15.5,fontWeight:700,cursor:(!priceOk||!qtyValid)?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:8,boxShadow:(!priceOk||!qtyValid)?"none":"0 8px 22px rgba(38,161,123,.32)",transition:"all .2s"}}>Continuar</button>
+      </> : <>
+        {/* Resumen antes de WhatsApp (NO ejecuta operación real) */}
+        <div style={{background:isSell?"#F1FAF6":T.tintSoft,border:"1.5px solid "+(isSell?"#D6F0E4":"#E4D4F5"),borderRadius:16,padding:"18px 18px 16px",marginBottom:14}}>
+          <div style={{fontSize:12,fontWeight:800,color:accent,letterSpacing:.4,marginBottom:12}}>{isSell?"VENTA DE USDT":"COMPRA DE USDT"}</div>
+          {[[isSell?"Vendes":"Compras",qDisp+" USDT"],["Tasa","$"+f(price)+" "+cur],[isSell?"Recibes":"Pagas","$"+f(total)+" "+cur]].map((r,i)=>(
+            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderTop:i?"1px solid rgba(0,0,0,.06)":"none"}}>
+              <span style={{fontSize:12.5,color:T.ink3,fontWeight:600}}>{r[0]}</span>
+              <span style={{fontSize:i===2?16:14,fontWeight:800,color:i===2?accent:T.ink}}>{r[1]}</span>
+            </div>))}
+        </div>
+        <button onClick={openWAsim} className="btn-glow" style={{width:"100%",justifyContent:"center",background:T.wa,color:"#fff",border:"none",borderRadius:14,padding:15,fontSize:15.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:8,boxShadow:"0 8px 22px rgba(37,211,102,.32)"}}><WASvg size={17}/> Confirmar por WhatsApp</button>
+        <button onClick={()=>setConfirming(false)} style={{width:"100%",background:"transparent",border:"none",color:T.ink3,fontFamily:"inherit",fontSize:12.5,fontWeight:600,cursor:"pointer",padding:"12px 0 2px"}}>← Editar cantidad</button>
+      </>}
+
       <div style={{display:"flex",flexWrap:"wrap",justifyContent:"center",gap:"6px 14px",marginTop:14}}>
-        {["Precios reales de mercado","Actualizado automáticamente","Atención personalizada"].map((t,i)=><span key={i} style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:10.5,color:T.ink2,fontWeight:500}}><span style={{color:T.usdt,fontSize:12,fontWeight:800}}>✓</span>{t}</span>)}
+        <span style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:10.5,color:T.ink2,fontWeight:500}}><span style={{color:T.usdt,fontSize:12,fontWeight:800}}>✓</span>Cotización actualizada automáticamente</span>
+        <span style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:10.5,color:T.ink2,fontWeight:500}}><span style={{color:T.usdt,fontSize:12,fontWeight:800}}>✓</span>Precio informativo de mercado</span>
       </div>
     </div>
   </div>;
