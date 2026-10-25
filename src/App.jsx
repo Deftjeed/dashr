@@ -1,25 +1,63 @@
 import { useState, useEffect, useRef } from "react";
 
 // ══════════ RATE ENGINE (UNTOUCHED) ══════════
-const DEBUG=false,FALLBACK_RATES={COP:3190,ARS:1593,VES:875,MXN:17.5,CLP:950},CURRENCIES_LIST=["COP","ARS","VES","MXN","CLP"],CACHE_MS=300000,RETRY_MS=30000,FETCH_TIMEOUT=8000;let _cache=null,_lastAttempt=0,_consecutiveFailures=0;const PROXY_URL="https://dashr-rates.jeans1jean1.workers.dev/rates";
+// FALLBACK_RATES: ultimo recurso, NO tasa de mercado. Cuando se usan, la interfaz
+// las rotula "Referencial". Verificadas en criptoya/binancep2p el 2026-10-24
+// ((ask+bid)/2). Refrescar cada pocas semanas: el VES anterior (875) iba 13% bajo.
+const DEBUG=false,FALLBACK_RATES={COP:3128.5,ARS:1643,VES:1005.5,MXN:18.71,CLP:997,PEN:3.5},CURRENCIES_LIST=["COP","ARS","VES","MXN","CLP","PEN"],CACHE_MS=300000,RETRY_MS=30000,FETCH_TIMEOUT=8000;let _cache=null,_lastAttempt=0,_consecutiveFailures=0;const PROXY_URL="https://dashr-rates.jeans1jean1.workers.dev/rates";
 function dbg(t,m,d){if(!DEBUG)return;const p="[DASHR "+new Date().toLocaleTimeString()+"]";if(t==="ok")console.log(p+" "+m,d||"");if(t==="warn")console.warn(p+" "+m,d||"");if(t==="err")console.error(p+" "+m,d||"")}
 function fetchTO(u,o,ms){return Promise.race([fetch(u,o),new Promise((_,r)=>{setTimeout(()=>r(new Error("TIMEOUT")),ms)})])}
 async function fpS(f,tt){try{const r=await fetchTO("https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({page:1,rows:5,payTypes:[],asset:"USDT",tradeType:tt,fiat:f,publisherType:null})},FETCH_TIMEOUT);if(!r.ok)return null;var j=await r.json(),ads=j&&j.data?j.data:[],prices=[];for(var i=0;i<ads.length;i++){var p=parseFloat(ads[i].adv&&ads[i].adv.price?ads[i].adv.price:"0");if(p>0)prices.push(p)}if(!prices.length)return null;var s=0;for(var k=0;k<prices.length;k++)s+=prices[k];return s/prices.length}catch(e){dbg("err","P2P "+f+"/"+tt,e.message);return null}}
 async function fpR(f){var r=await Promise.all([fpS(f,"BUY"),fpS(f,"SELL")]);var b=r[0],s=r[1];if(b&&s)return Math.round(((b+s)/2)*100)/100;return b?Math.round(b*100)/100:s?Math.round(s*100)/100:null}
-async function fProxy(){if(!PROXY_URL)return null;try{var r=await fetchTO(PROXY_URL,{},FETCH_TIMEOUT);if(!r.ok)return null;var j=await r.json();if(j&&j.rates&&Object.keys(j.rates).length>=3){dbg("ok","PROXY",j.rates);return j.rates}}catch(e){dbg("err","PROXY",e.message)}return null}
+// Lectura honesta de la respuesta del Worker. Una moneda se marca como NO fiable
+// (entra en `bad` -> la interfaz dira "Referencial" en los pares que la usen) en
+// tres casos, todos declarados por el propio Worker:
+//   1. origin empieza por "fallback:"  -> es una constante, no mercado.
+//   2. quote === "USD-proxy"           -> es un dolar paralelo/cripto, NO USDT.
+//   3. figura en la lista `proxies`    -> lo mismo, por si falta el campo quote.
+// Worker antiguo sin origin ni quote: si source!=="live" se marca todo el set.
+function _badDelWorker(j){
+  var bad=[],vis={};
+  function add(c){if(c&&!vis[c]){vis[c]=1;bad.push(c)}}
+  if(j.origin){for(var k in j.origin){if(String(j.origin[k]).indexOf("fallback")===0)add(k)}}
+  if(j.quote){for(var q in j.quote){if(String(j.quote[q])==="USD-proxy")add(q)}}
+  if(Object.prototype.toString.call(j.proxies)==="[object Array]"){for(var i=0;i<j.proxies.length;i++)add(j.proxies[i])}
+  if(!j.origin&&!j.quote&&j.source&&j.source!=="live")return CURRENCIES_LIST.slice();
+  return bad;
+}
+async function fProxy(){if(!PROXY_URL)return null;try{var r=await fetchTO(PROXY_URL,{},FETCH_TIMEOUT);if(!r.ok)return null;var j=await r.json();if(j&&j.rates&&Object.keys(j.rates).length>=3){var bad=_badDelWorker(j);dbg("ok","PROXY",j.rates);return{rates:j.rates,bad:bad}}}catch(e){dbg("err","PROXY",e.message)}return null}
 function _mid(o){if(!o)return null;var a=o.ask>0?o.ask:null,b=o.bid>0?o.bid:null;return a&&b?(a+b)/2:a||b}
-async function fCya(){var rates={},cnt=0;var res=await Promise.allSettled(CURRENCIES_LIST.map(function(c){return fetchTO("https://criptoya.com/api/usdt/"+c.toLowerCase()+"/1",{headers:{Accept:"application/json"}},FETCH_TIMEOUT).then(function(r){return r.ok?r.json():null})}));for(var i=0;i<res.length;i++){if(res[i].status==="fulfilled"&&res[i].value){var j=res[i].value,p=_mid(j.binancep2p);if(!p){var ms=[];for(var k in j){var m=_mid(j[k]);if(m>0)ms.push(m)}if(ms.length){ms.sort(function(a,b){return a-b});p=ms[Math.floor(ms.length/2)]}}if(p>0){rates[CURRENCIES_LIST[i]]=Math.round(p*100)/100;cnt++}}}if(cnt>0){dbg("ok","CRIPTOYA",rates);return rates}return null}
-async function fBinance(){var rates={},count=0;var res=await Promise.allSettled(CURRENCIES_LIST.map(c=>fpR(c)));for(var i=0;i<res.length;i++){if(res[i].status==="fulfilled"&&res[i].value>0){rates[CURRENCIES_LIST[i]]=res[i].value;count++}}if(count>0){dbg("ok","BINANCE("+count+"/5)",rates);return rates}return null}
-function mrg(api){var m={};for(var i=0;i<CURRENCIES_LIST.length;i++){var c=CURRENCIES_LIST[i];m[c]=(api&&api[c]&&api[c]>0)?api[c]:FALLBACK_RATES[c]}return m}
+async function fCya(){var rates={},cnt=0;var res=await Promise.allSettled(CURRENCIES_LIST.map(function(c){return fetchTO("https://criptoya.com/api/usdt/"+c.toLowerCase()+"/1",{headers:{Accept:"application/json"}},FETCH_TIMEOUT).then(function(r){return r.ok?r.json():null})}));for(var i=0;i<res.length;i++){if(res[i].status==="fulfilled"&&res[i].value){var j=res[i].value,p=_mid(j.binancep2p);if(!p){var ms=[];for(var k in j){var m=_mid(j[k]);if(m>0)ms.push(m)}if(ms.length){ms.sort(function(a,b){return a-b});p=ms[Math.floor(ms.length/2)]}}if(p>0){rates[CURRENCIES_LIST[i]]=Math.round(p*100)/100;cnt++}}}if(cnt>0){dbg("ok","CRIPTOYA("+cnt+"/"+CURRENCIES_LIST.length+")",rates);return{rates:rates,bad:[]}}return null}
+async function fBinance(){var rates={},count=0;var res=await Promise.allSettled(CURRENCIES_LIST.map(c=>fpR(c)));for(var i=0;i<res.length;i++){if(res[i].status==="fulfilled"&&res[i].value>0){rates[CURRENCIES_LIST[i]]=res[i].value;count++}}if(count>0){dbg("ok","BINANCE("+count+"/"+CURRENCIES_LIST.length+")",rates);return{rates:rates,bad:[]}}return null}
+function mrg(api){var m={},miss=[];for(var i=0;i<CURRENCIES_LIST.length;i++){var c=CURRENCIES_LIST[i];if(api&&api[c]&&api[c]>0){m[c]=api[c]}else{m[c]=FALLBACK_RATES[c];miss.push(c)}}return{m:m,miss:miss}}
+function unir(a,b){var o=a.slice();for(var i=0;i<(b||[]).length;i++){if(o.indexOf(b[i])<0)o.push(b[i])}return o}
 function vld(r){if(!r)return false;for(var i=0;i<CURRENCIES_LIST.length;i++){if(!r[CURRENCIES_LIST[i]]||r[CURRENCIES_LIST[i]]<=0)return false}return true}
-async function loadRates(){var n=Date.now();if(_cache&&n-_cache.ts<CACHE_MS)return _cache;if(_consecutiveFailures>0&&n-_lastAttempt<RETRY_MS)return _cache||{rates:{...FALLBACK_RATES},src:"live",ts:n};_lastAttempt=n;var pr=await fCya()||await fProxy();if(pr){var m1=mrg(pr);if(vld(m1)){_consecutiveFailures=0;_cache={rates:m1,src:"live",ts:n};return _cache}}var br=await fBinance();if(br){var m2=mrg(br);if(vld(m2)){_consecutiveFailures=0;_cache={rates:m2,src:"live",ts:n};return _cache}}_consecutiveFailures++;_cache={rates:{...FALLBACK_RATES},src:"live",ts:n};return _cache}
-function cf(f,t){const p=[f,t].sort().join("-");return p==="ARS-COP"?.949:.915}
-function calc(a,f,t,r){if(!a||a<=0||f===t||!r||!r[f]||!r[t])return{result:0,rate:0};const u=a/r[f],b=u*r[t],fin=b*cf(f,t),rd=Math.floor(fin/100)*100;return{result:Math.max(0,rd),rate:a>0?rd/a:0}}
+async function loadRates(){var n=Date.now();if(_cache&&n-_cache.ts<CACHE_MS)return _cache;if(_consecutiveFailures>0&&n-_lastAttempt<RETRY_MS)return _cache||{rates:{...FALLBACK_RATES},src:"fallback",miss:CURRENCIES_LIST.slice(),ts:n};_lastAttempt=n;var pr=await fCya()||await fProxy();if(pr){var r1=mrg(pr.rates);var ms1=unir(r1.miss,pr.bad);if(vld(r1.m)){_consecutiveFailures=0;_cache={rates:r1.m,src:ms1.length>=CURRENCIES_LIST.length?"fallback":"live",miss:ms1,ts:n};return _cache}}var br=await fBinance();if(br){var r2=mrg(br.rates);var ms2=unir(r2.miss,br.bad);if(vld(r2.m)){_consecutiveFailures=0;_cache={rates:r2.m,src:ms2.length>=CURRENCIES_LIST.length?"fallback":"live",miss:ms2,ts:n};return _cache}}_consecutiveFailures++;_cache={rates:{...FALLBACK_RATES},src:"fallback",miss:CURRENCIES_LIST.slice(),ts:n};return _cache}
+// ── MOTOR COMERCIAL ──────────────────────────────────────────────
+// El margen de DASH va EMBEBIDO en el monto que recibe el destinatario:
+// recibido = (monto / tasa_origen) * tasa_destino * factor.  Un solo factor,
+// una sola vez, en un unico lugar (cf). No hay comision explicita aparte.
+//
+// Regla por DESTINO (se evalua primero y excluye a la regla por par):
+//   destino PEN (Peru) = 7%  ->  factor .93
+// Regla por PAR (comportamiento historico, intacto):
+//   ARS<->COP = 5.1% -> .949   |   resto = 8.5% -> .915
+const DEST_FEE={PEN:.07};
+// 1-0.07 da 0.9299999999999999 en coma flotante; se redondea para que el factor
+// sea exactamente .93 y la comision quede en un unico sitio (DEST_FEE).
+function destFactor(t){const f=DEST_FEE[t];return f===undefined?null:Math.round((1-f)*1e6)/1e6}
+function cf(f,t){const d=destFactor(t);if(d!==null)return d;const p=[f,t].sort().join("-");return p==="ARS-COP"?.949:.915}
+// Paso de redondeo (hacia abajo) por moneda destino. Las monedas de unidad
+// grande conservan el paso historico de 100; PEN (~3.5 por USDT) usa paso 1
+// porque redondear a 100 soles descartaria hasta ~28 USD por operacion.
+const ROUND_STEP={COP:100,ARS:100,VES:100,MXN:100,CLP:100,PEN:1};
+function rstep(c){return ROUND_STEP[c]||1}
+function calc(a,f,t,r){if(!a||a<=0||f===t||!r||!r[f]||!r[t]||!(r[f]>0)||!(r[t]>0))return{result:0,rate:0};const u=a/r[f],b=u*r[t],fin=b*cf(f,t);if(!isFinite(fin))return{result:0,rate:0};const st=rstep(t),rd=Math.floor(fin/st)*st;return{result:Math.max(0,rd),rate:a>0?rd/a:0}}
 
 // ══════════ CONFIG ══════════
 const WA="573117405064";
 const IG="https://instagram.com/dashremesas";
-const CU=[{c:"COP",n:"Colombia",s:"$",sub:"Peso colombiano"},{c:"ARS",n:"Argentina",s:"$",sub:"Peso argentino"},{c:"VES",n:"Venezuela",s:"Bs.",sub:"Bolívar"},{c:"MXN",n:"México",s:"$",sub:"Peso mexicano"},{c:"CLP",n:"Chile",s:"$",sub:"Peso chileno"}];
+const CU=[{c:"COP",n:"Colombia",s:"$",sub:"Peso colombiano"},{c:"ARS",n:"Argentina",s:"$",sub:"Peso argentino"},{c:"VES",n:"Venezuela",s:"Bs.",sub:"Bolívar"},{c:"MXN",n:"México",s:"$",sub:"Peso mexicano"},{c:"CLP",n:"Chile",s:"$",sub:"Peso chileno"},{c:"PEN",n:"Perú",s:"S/",sub:"Sol peruano"}];
 const fm=n=>Math.floor(n).toLocaleString("es-CO");
 const pa=s=>parseInt(s.replace(/[^0-9]/g,""),10)||0;
 const gc=c=>CU.find(x=>x.c===c);
@@ -135,6 +173,7 @@ function flagInner(c){
   if(c==="AR")return <g><rect width="40" height="30" fill="#fff"/><rect width="40" height="10" fill="#75AADB"/><rect y="20" width="40" height="10" fill="#75AADB"/><circle cx="20" cy="15" r="3.5" fill="#F6B40E"/></g>;
   if(c==="VE")return <g><rect width="40" height="10" fill="#CF142B"/><rect y="10" width="40" height="10" fill="#00247D"/><rect y="20" width="40" height="10" fill="#FC0"/></g>;
   if(c==="MX")return <g><rect width="13.3" height="30" fill="#006847"/><rect x="13.3" width="13.4" height="30" fill="#fff"/><rect x="26.7" width="13.3" height="30" fill="#CE1126"/><circle cx="20" cy="15" r="3" fill="#6B3A2A"/></g>;
+  if(c==="PE")return <g><rect width="13.3" height="30" fill="#D91023"/><rect x="13.3" width="13.4" height="30" fill="#fff"/><rect x="26.7" width="13.3" height="30" fill="#D91023"/></g>;
   if(c==="CL")return <g><rect width="40" height="30" fill="#D52B1E"/><rect width="40" height="15" fill="#fff"/><rect width="13.3" height="15" fill="#0039A6"/><polygon points="6.65,4 7.5,7 10.5,7 8,8.8 8.8,12 6.65,10 4.5,12 5.3,8.8 2.8,7 5.8,7" fill="#fff"/></g>;
   return null;
 }
@@ -143,6 +182,7 @@ function FlagSvg({country,size=32}){const s=size;const st={borderRadius:5,filter
   if(country==="AR")return <svg width={s} height={s} viewBox="0 0 40 30" style={st}><rect width="40" height="30" fill="#fff"/><rect width="40" height="10" fill="#75AADB"/><rect y="20" width="40" height="10" fill="#75AADB"/><circle cx="20" cy="15" r="3.5" fill="#F6B40E"/></svg>;
   if(country==="VE")return <svg width={s} height={s} viewBox="0 0 40 30" style={st}><rect width="40" height="10" fill="#CF142B"/><rect y="10" width="40" height="10" fill="#00247D"/><rect y="20" width="40" height="10" fill="#FC0"/></svg>;
   if(country==="MX")return <svg width={s} height={s} viewBox="0 0 40 30" style={st}><rect width="13.3" height="30" fill="#006847"/><rect x="13.3" width="13.4" height="30" fill="#fff"/><rect x="26.7" width="13.3" height="30" fill="#CE1126"/><circle cx="20" cy="15" r="3" fill="#6B3A2A"/></svg>;
+  if(country==="PE")return <svg width={s} height={s} viewBox="0 0 40 30" style={st}><rect width="13.3" height="30" fill="#D91023"/><rect x="13.3" width="13.4" height="30" fill="#fff"/><rect x="26.7" width="13.3" height="30" fill="#D91023"/></svg>;
   if(country==="CL")return <svg width={s} height={s} viewBox="0 0 40 30" style={st}><rect width="40" height="30" fill="#D52B1E"/><rect y="0" width="40" height="15" fill="#fff"/><rect width="13.3" height="15" fill="#0039A6"/><polygon points="6.65,4 7.5,7 10.5,7 8,8.8 8.8,12 6.65,10 4.5,12 5.3,8.8 2.8,7 5.8,7" fill="#fff"/></svg>;
   return null;
 }
@@ -150,8 +190,8 @@ function FlagSvg({country,size=32}){const s=size;const st={borderRadius:5,filter
 // ══════════ GLOBO LATAM 3D (HERO) ══════════
 function Globe(){
   const cx=210,cy=210,R=150;
-  const flags={CO:[150,148],VE:[300,150],MX:[108,236],CL:[176,318],AR:[252,322]};
-  const arcs=[["CO","VE"],["CO","MX"],["CO","CL"],["CO","AR"],["AR","CL"]];
+  const flags={CO:[150,148],VE:[300,150],MX:[108,236],PE:[118,296],CL:[176,318],AR:[252,322]};
+  const arcs=[["CO","VE"],["CO","MX"],["CO","CL"],["CO","AR"],["AR","CL"],["CO","PE"],["PE","CL"]];
   const arc=(a,b)=>{const[x1,y1]=flags[a],[x2,y2]=flags[b];const mx=(x1+x2)/2,my=(y1+y2)/2;const dx=mx-cx,dy=my-cy;const k=0.35;return"M"+x1+","+y1+" Q"+(mx+dx*k)+","+(my+dy*k)+" "+x2+","+y2};
   return <svg viewBox="0 0 420 420" style={{width:"100%",height:"100%",display:"block",overflow:"visible"}}>
     <defs>
@@ -186,9 +226,9 @@ function Globe(){
 // ══════════ RED LATAM VIVA ══════════
 function LatamNetwork(){
   const[hov,setHov]=useState(null);
-  const nodes={MX:[110,72],CO:[300,176],VE:[438,120],CL:[176,352],AR:[346,350]};
-  const names={MX:"México",CO:"Colombia",VE:"Venezuela",CL:"Chile",AR:"Argentina"};
-  const links=[["CO","MX"],["CO","VE"],["CO","CL"],["CO","AR"],["AR","CL"],["VE","MX"]];
+  const nodes={MX:[110,72],CO:[300,176],VE:[438,120],PE:[214,262],CL:[176,352],AR:[346,350]};
+  const names={MX:"México",CO:"Colombia",VE:"Venezuela",PE:"Perú",CL:"Chile",AR:"Argentina"};
+  const links=[["CO","MX"],["CO","VE"],["CO","CL"],["CO","AR"],["AR","CL"],["VE","MX"],["CO","PE"],["PE","CL"],["PE","AR"]];
   const path=(a,b)=>"M"+nodes[a][0]+","+nodes[a][1]+" L"+nodes[b][0]+","+nodes[b][1];
   const active=(a,b)=>hov===null||hov===a||hov===b;
   const corridors=k=>links.filter(l=>l[0]===k||l[1]===k).map(l=>names[l[0]===k?l[1]:l[0]]);
@@ -270,8 +310,13 @@ export default function App(){
   const[ready,setReady]=useState(false);
   const[pulse,setPulse]=useState(0);
   const[since,setSince]=useState(0);
-  useEffect(()=>{loadRates().then(r=>{setRates(r.rates);setReady(true);setSince(0)});var iv=setInterval(()=>{loadRates().then(r=>{setRates(r.rates);setSince(0)})},CACHE_MS);var tk=setInterval(()=>setSince(s=>s+1),1000);return()=>{clearInterval(iv);clearInterval(tk)}},[]);
+  const[src,setSrc]=useState("live");
+  const[miss,setMiss]=useState([]);
+  useEffect(()=>{const ap=r=>{setRates(r.rates);setSrc(r.src||"live");setMiss(r.miss||[])};loadRates().then(r=>{ap(r);setReady(true);setSince(0)});var iv=setInterval(()=>{loadRates().then(r=>{ap(r);setSince(0)})},CACHE_MS);var tk=setInterval(()=>setSince(s=>s+1),1000);return()=>{clearInterval(iv);clearInterval(tk)}},[]);
   const amt=pa(input),{result,rate}=calc(amt,fromC,toC,rates),fi=gc(fromC),ti=gc(toC);
+  // la cotizacion solo se declara "en vivo" si AMBAS monedas del par vienen de
+  // una fuente real en USDT (ni respaldo, ni proxy en USD)
+  const pairLive=src==="live"&&miss.indexOf(fromC)<0&&miss.indexOf(toC)<0;
   const dispResult=useCountUp(result);
   const bump=()=>setPulse(p=>p+1);
   const swap=()=>{const t=fromC;setFromC(toC);setToC(t);setInput(result>0?fm(result):"100.000");bump()};
@@ -317,38 +362,44 @@ export default function App(){
       <div id="sim" className="sim-card" style={{background:"#fff",borderRadius:T.rCard,padding:"clamp(22px,4vw,28px)",boxShadow:T.s3,border:"1px solid "+T.border,position:"relative"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
           <span style={{fontWeight:700,fontSize:18.5,letterSpacing:-0.3}}>Simulador de envío</span>
-          <span className={ready?"live-ring":""} style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:T.waDeep,fontWeight:600,background:"#EAFBF1",padding:"5px 13px",borderRadius:T.rPill}}><span className="pulse-dot" style={{width:7,height:7,borderRadius:"50%",background:T.wa}}/>{ready?"En vivo":"Cargando..."}</span>
+          <span className={ready&&pairLive?"live-ring":""} style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:pairLive?T.waDeep:"#8A6100",fontWeight:600,background:pairLive?"#EAFBF1":"#FFF5E0",padding:"5px 13px",borderRadius:T.rPill}}><span className={pairLive?"pulse-dot":""} style={{width:7,height:7,borderRadius:"50%",background:pairLive?T.wa:"#E8A317"}}/>{!ready?"Cargando...":(pairLive?"En vivo":"Referencial")}</span>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:18,fontSize:11.5,color:T.ink3}}>
-          <LiveBars/><span>Tasa real de mercado · actualizada hace {since}s</span>
+          <LiveBars/><span>{pairLive?<>Tasa real de mercado · actualizada hace {since}s</>:<>Tasa referencial · la confirmamos por WhatsApp antes de operar</>}</span>
         </div>
-        <label style={{fontSize:11,fontWeight:700,color:T.ink3,textTransform:"uppercase",letterSpacing:0.8,display:"block",marginBottom:8}}>Tú envías</label>
+        <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:9,marginTop:2}}>
+          <span style={{width:4,height:16,borderRadius:3,background:T.borderHi,flexShrink:0}}/>
+          <label style={{fontSize:"clamp(12.5px,3.3vw,13.5px)",fontWeight:800,color:T.ink2,textTransform:"uppercase",letterSpacing:1.1,lineHeight:1}}>Tú envías</label>
+        </div>
         <div className="input-focus" style={{display:"flex",gap:8,marginBottom:6}}>
           <div style={{flex:1,display:"flex",alignItems:"center",gap:8,background:T.tintSoft,border:"1.5px solid "+T.border,borderRadius:T.rField,padding:"0 12px",minWidth:0}}>
-            <span style={{fontSize:13,color:T.ink3,fontWeight:700}}>{fromC.substring(0,2)}</span>
+            <span style={{fontSize:14,color:T.ink2,fontWeight:800,flexShrink:0}}>{fi.s}</span>
             <input type="text" inputMode="numeric" value={input} onChange={e=>{const r=pa(e.target.value);setInput(r>0?fm(r):"")}} className="sim-amount" style={{flex:1,fontSize:23,fontWeight:700,fontFamily:"inherit",padding:"14px 0",border:"none",outline:"none",background:"transparent",color:T.ink,minWidth:0,width:"100%",letterSpacing:-0.5}}/>
           </div>
           <select value={fromC} onChange={e=>hF(e.target.value)} style={{width:82,fontSize:14,fontWeight:600,padding:"14px 6px",background:T.tintSoft,border:"1.5px solid "+T.border,borderRadius:T.rField,color:P,cursor:"pointer",outline:"none",fontFamily:"inherit"}}>{CU.map(c=><option key={c.c} value={c.c}>{c.c}</option>)}</select>
         </div>
-        <div style={{fontSize:11.5,color:T.ink3,marginBottom:10}}>{fi.sub}</div>
+        <div style={{fontSize:12,color:T.ink2,fontWeight:600,marginBottom:10}}>{fi.sub}</div>
         <div style={{display:"flex",justifyContent:"center",margin:"2px 0 10px"}}><button onClick={swap} className="swapbtn" style={{width:44,height:44,borderRadius:"50%",border:"1.5px solid "+T.border,background:"#fff",cursor:"pointer",fontSize:18,color:P,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:T.s1}}>↓</button></div>
-        <label style={{fontSize:11,fontWeight:700,color:T.ink3,textTransform:"uppercase",letterSpacing:0.8,display:"block",marginBottom:8}}>Ellos reciben</label>
+        <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:9,marginTop:2}}>
+          <span style={{width:4,height:16,borderRadius:3,background:P,flexShrink:0}}/>
+          <label style={{fontSize:"clamp(12.5px,3.3vw,13.5px)",fontWeight:800,color:P,textTransform:"uppercase",letterSpacing:1.1,lineHeight:1}}>Ellos reciben</label>
+        </div>
         <div key={pulse} style={{display:"flex",gap:8,marginBottom:6,borderRadius:T.rField,animation:"rateFlash .6s ease-out"}}>
           <div style={{flex:1,display:"flex",alignItems:"center",gap:8,background:"linear-gradient(135deg,#820AD1,#6B21A8)",borderRadius:T.rField,padding:"0 14px",minWidth:0}}>
-            <span style={{fontSize:13,color:"rgba(255,255,255,.7)",fontWeight:700}}>{toC.substring(0,2)}</span>
-            <input type="text" readOnly value={fm(dispResult)} className="sim-amount" style={{flex:1,fontSize:24,fontWeight:800,fontFamily:"inherit",padding:"14px 0",border:"none",outline:"none",background:"transparent",color:"#fff",minWidth:0,width:"100%",letterSpacing:-0.5}}/>
+            <span style={{fontSize:14,color:"rgba(255,255,255,.82)",fontWeight:800,flexShrink:0}}>{ti.s}</span>
+            <input type="text" readOnly value={fm(dispResult)} className="sim-amount" style={{flex:1,fontSize:27,fontWeight:800,fontFamily:"inherit",padding:"14px 0",border:"none",outline:"none",background:"transparent",color:"#fff",minWidth:0,width:"100%",letterSpacing:-0.5}}/>
           </div>
           <select value={toC} onChange={e=>hT(e.target.value)} style={{width:82,fontSize:14,fontWeight:600,padding:"14px 6px",background:T.tintSoft,border:"1.5px solid "+T.border,borderRadius:T.rField,color:P,cursor:"pointer",outline:"none",fontFamily:"inherit"}}>{CU.map(c=><option key={c.c} value={c.c}>{c.c}</option>)}</select>
         </div>
-        <div style={{fontSize:11.5,color:T.ink3,marginBottom:14}}>{ti.sub}</div>
+        <div style={{fontSize:12,color:T.ink2,fontWeight:600,marginBottom:14}}>{ti.sub}</div>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,fontSize:12.5,color:T.ink2,marginBottom:16,padding:"11px 14px",background:T.tintSoft,borderRadius:12,border:"1px solid "+T.border}}>
-          <span style={{display:"flex",alignItems:"center",gap:7}}><span className="pulse-dot" style={{width:6,height:6,borderRadius:"50%",background:T.wa}}/>{rate>0?<b style={{color:T.ink}}>1 {fromC} = {rate.toFixed(4)} {toC}</b>:"Ingresa un monto"}</span>
-          <span style={{fontSize:10.5,color:T.ink3,fontWeight:600}}>Tasa de mercado</span>
+          <span style={{display:"flex",alignItems:"center",gap:7}}><span className="pulse-dot" style={{width:6,height:6,borderRadius:"50%",background:T.wa}}/>{rate>0?<b style={{color:T.ink}}>1 {fromC} = {rate>=100?rate.toLocaleString("es-CO",{maximumFractionDigits:2}):rate.toFixed(4)} {toC}</b>:"Ingresa un monto"}</span>
+          <span style={{fontSize:10.5,color:T.ink3,fontWeight:600}}>{pairLive?"Tasa de mercado":"Referencial"}</span>
         </div>
         <button onClick={()=>openWA()} disabled={result<=0} className="btn-wa" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,width:"100%",padding:17,border:"none",borderRadius:14,background:result>0?T.wa:"#E6E2EE",color:"#fff",fontSize:16.5,fontWeight:700,cursor:result>0?"pointer":"not-allowed",fontFamily:"inherit",boxShadow:result>0?"0 8px 24px rgba(37,211,102,0.32)":"none"}}><WASvg/> Cotizar por WhatsApp →</button>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginTop:14,paddingTop:14,borderTop:"1px solid "+T.border}}>
           <OperatorAvatar/>
-          <div style={{textAlign:"right"}}><div style={{fontSize:14,fontWeight:800,color:T.ink,letterSpacing:-.3}}>4.9★ · +2.500</div><div style={{fontSize:11,color:T.ink3}}>operaciones</div></div>
+          <div style={{textAlign:"right"}}><div style={{fontSize:13.5,fontWeight:800,color:T.ink,letterSpacing:-.3}}>Atención 1 a 1</div><div style={{fontSize:11,color:T.ink3}}>sin bots ni formularios</div></div>
         </div>
         <p style={{textAlign:"center",fontSize:11,color:T.ink3,marginTop:10}}>🔒 Confirmamos la tasa antes de que envíes</p>
       </div>
@@ -361,7 +412,7 @@ export default function App(){
 {/* PRUEBA SOCIAL */}
 <section style={{background:"linear-gradient(135deg,#820AD1,#6B21A8)",padding:"58px clamp(16px,4vw,48px)"}}>
   <Reveal style={{maxWidth:1040,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:30}}>
-    {[{n:2500,p:"+",l:"Operaciones realizadas"},{n:5,p:"",l:"Países conectados"},{n:5,p:"<",s:" min",l:"Respuesta promedio"},{n:100,p:"",s:"%",l:"Atención personalizada"}].map((s,i)=>(
+    {[{n:6,p:"",l:"Países conectados"},{n:6,p:"",l:"Monedas disponibles"},{n:0,p:"",l:"Apps que instalar"},{n:0,p:"",l:"Registros obligatorios"}].map((s,i)=>(
       <div key={i} style={{textAlign:"center"}}>
         <div style={{fontSize:"clamp(40px,5vw,56px)",fontWeight:800,color:"#fff",letterSpacing:-2,lineHeight:1}}><StatNum value={s.n} prefix={s.p} suffix={s.s}/></div>
         <div style={{fontSize:14,color:"#E9D5FF",marginTop:8,fontWeight:500}}>{s.l}</div>
@@ -410,7 +461,7 @@ export default function App(){
   <Reveal style={{maxWidth:680,margin:"0 auto 12px",textAlign:"center"}}>
     <span style={{color:P,fontWeight:700,fontSize:13,letterSpacing:.04,textTransform:"uppercase"}}>Red financiera</span>
     <h2 style={{fontSize:"clamp(28px,4.2vw,42px)",fontWeight:800,margin:"12px 0 14px",letterSpacing:-1.4}}>Una red operando en tiempo real</h2>
-    <p style={{color:T.ink2,fontSize:16.5,lineHeight:1.6,maxWidth:520,margin:"0 auto"}}>5 países conectados, dinero moviéndose todos los días. Toca un país (o pasa el mouse) para ver sus corredores activos.</p>
+    <p style={{color:T.ink2,fontSize:16.5,lineHeight:1.6,maxWidth:520,margin:"0 auto"}}>6 países conectados, dinero moviéndose todos los días. Toca un país (o pasa el mouse) para ver sus corredores activos.</p>
   </Reveal>
   <Reveal delay={0.1} style={{maxWidth:740,margin:"24px auto 0"}}><LatamNetwork/></Reveal>
 </section>
@@ -445,21 +496,21 @@ export default function App(){
 {/* TESTIMONIOS */}
 <section style={{padding:"80px clamp(16px,4vw,48px)",background:"#FAF7FF"}}>
   <Reveal style={{maxWidth:1000,margin:"0 auto 44px",textAlign:"center"}}>
-    <span style={{color:P,fontWeight:700,fontSize:13,letterSpacing:.04,textTransform:"uppercase"}}>Historias reales</span>
-    <h2 style={{fontSize:"clamp(28px,4vw,40px)",fontWeight:800,margin:"12px 0 0",letterSpacing:-1.2}}>Familias que ya confían en DASH</h2>
+    <span style={{display:"inline-flex",alignItems:"center",gap:9,color:P,fontWeight:800,fontSize:13.5,letterSpacing:.06,textTransform:"uppercase"}}>Cómo trabajamos</span>
+    <h2 style={{fontSize:"clamp(30px,4.4vw,44px)",fontWeight:800,margin:"12px 0 0",letterSpacing:-1.2}}>Lo que obtienes en cada envío</h2>
+    <p style={{color:T.ink2,fontSize:15,lineHeight:1.6,maxWidth:600,margin:"14px auto 0"}}>Nada de esto es una promesa vaga: es cómo funciona el servicio, y lo puedes comprobar en la primera operación.</p>
   </Reveal>
   <div style={{maxWidth:1040,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(290px,1fr))",gap:20}}>
-    {[{q:"Envié de Bogotá a Caracas y llegó el mismo día. No lo podía creer.",n:"Laura G.",city:"Bogotá",co:"CO"},{q:"La tasa fue transparente y mejor de lo que esperaba. Cero sorpresas.",n:"Martín R.",city:"Buenos Aires",co:"AR"},{q:"Todo el proceso fue por WhatsApp y muy rápido. Me atendió una persona real.",n:"Daniela P.",city:"Santiago",co:"CL"},{q:"Compré USDT por primera vez y me guiaron paso a paso. Muy fácil.",n:"José M.",city:"Ciudad de México",co:"MX"},{q:"Le mando a mi familia en Maracaibo cada mes. Siempre puntual.",n:"Andrés V.",city:"Medellín",co:"CO"},{q:"Mejor tasa que mi banco y sin filas ni formularios. Recomendado.",n:"Sofía L.",city:"Córdoba",co:"AR"}].map((t,i)=>(
+    {/* Testimonios retirados el 2026-10-25: Jean confirmo que eran inventados.
+        Estas tarjetas describen el funcionamiento real del servicio, comprobable
+        en la primera operacion. Cuando haya resenas verificables (Google Business,
+        capturas de WhatsApp con permiso del cliente), van aqui CON su fuente. */}
+    {[{ic:"📈",t:"Tasa real, a la vista",d:"El simulador usa el precio P2P de mercado en vivo. Si la fuente falla, la web lo dice: ves “Referencial” en lugar de un número inventado."},{ic:"💬",t:"Una persona, no un bot",d:"Cada operación la cierra un asesor por WhatsApp, de principio a fin. No hay respuestas automáticas ni menús."},{ic:"⚡",t:"Sin apps ni registros",d:"No descargas nada ni creas una cuenta. Escribes por WhatsApp con el monto ya calculado."},{ic:"📄",t:"Comprobante de cada envío",d:"El soporte de la transferencia te llega al mismo chat, sin que tengas que pedirlo."},{ic:"🌎",t:"Seis corredores LATAM",d:"Colombia, Venezuela, Argentina, Chile, México y Perú, con tasa propia para cada par de monedas."},{ic:"₮",t:"Respaldado en USDT",d:"Convertimos usando USDT como referencia, al precio real del mercado P2P, no a una tasa fija de hace meses."}].map((bn,i)=>(
       <Reveal key={i} delay={(i%3)*0.07}>
         <div className="card-lift" style={{background:"#fff",borderRadius:T.rCard,padding:28,boxShadow:T.s1,border:"1px solid "+T.border,height:"100%",position:"relative"}}>
-          <div style={{position:"absolute",top:20,right:24,fontSize:48,color:T.tint,fontWeight:800,lineHeight:1,fontFamily:"Georgia,serif"}}>&rdquo;</div>
-          <div style={{color:"#F5A623",marginBottom:12,fontSize:15,letterSpacing:2}}>{STARS}</div>
-          <p style={{fontSize:15.5,color:T.ink,lineHeight:1.65,marginBottom:20,fontWeight:500}}>{t.q}</p>
-          <div style={{display:"flex",alignItems:"center",gap:12,borderTop:"1px solid "+T.border,paddingTop:16}}>
-            <div style={{width:42,height:42,borderRadius:"50%",background:"linear-gradient(135deg,#A855F7,#820AD1)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:16}}>{t.n.charAt(0)}</div>
-            <div style={{flex:1}}><div style={{fontWeight:700,fontSize:14.5}}>{t.n}</div><div style={{fontSize:12.5,color:T.ink3}}>{t.city}</div></div>
-            <FlagSvg country={t.co} size={26}/>
-          </div>
+          <div aria-hidden="true" style={{width:48,height:48,borderRadius:15,background:T.tint,display:"flex",alignItems:"center",justifyContent:"center",fontSize:23,marginBottom:17}}>{bn.ic}</div>
+          <div style={{fontWeight:800,fontSize:17,letterSpacing:-0.3,color:T.ink,marginBottom:9}}>{bn.t}</div>
+          <p style={{fontSize:14.5,color:T.ink2,lineHeight:1.62,margin:0,fontWeight:500}}>{bn.d}</p>
         </div>
       </Reveal>))}
   </div>
@@ -485,7 +536,7 @@ export default function App(){
 <section id="s-faq" style={{padding:"80px clamp(16px,4vw,48px)",background:"#FAF7FF"}}>
   <Reveal style={{maxWidth:700,margin:"0 auto"}}>
     <h2 style={{fontSize:"clamp(26px,4vw,38px)",fontWeight:800,textAlign:"center",marginBottom:40,letterSpacing:-1.2}}>Preguntas <span style={{color:P}}>frecuentes</span></h2>
-    {["¿Qué puedo hacer con DASH?|Enviar y recibir dinero entre 5 países de LATAM, y comprar o vender USDT. Todo por WhatsApp.","¿Cómo funciona la compra/venta de USDT?|Nos escribes, te damos la cotización en vivo y te guiamos paso a paso. Sin exchange ni apps complicadas.","¿Cuánto tarda en llegar una remesa?|Típicamente menos de 30 minutos. Usualmente en menos de 15.","¿Cuánto cobran de comisión?|La tasa del simulador ya incluye todo. Sin cargos ocultos.","¿Necesito descargar algo?|No. Todo funciona por WhatsApp, sin apps ni registros.","¿Es seguro?|Verificación y comprobante de cada operación, con un asesor real acompañándote."].map(function(item,i){var p=item.split("|");return <Fq key={i} q={p[0]} a={p[1]} i={i}/>})}
+    {["¿Qué puedo hacer con DASH?|Enviar y recibir dinero entre 6 países de LATAM, y comprar o vender USDT. Todo por WhatsApp.","¿Cómo funciona la compra/venta de USDT?|Nos escribes, te damos la cotización en vivo y te guiamos paso a paso. Sin exchange ni apps complicadas.","¿Cuánto tarda en llegar una remesa?|Típicamente menos de 30 minutos. Usualmente en menos de 15.","¿Cuánto cobran de comisión?|La tasa del simulador ya incluye todo. Sin cargos ocultos.","¿Necesito descargar algo?|No. Todo funciona por WhatsApp, sin apps ni registros.","¿Es seguro?|Verificación y comprobante de cada operación, con un asesor real acompañándote."].map(function(item,i){var p=item.split("|");return <Fq key={i} q={p[0]} a={p[1]} i={i}/>})}
   </Reveal>
 </section>
 
@@ -561,7 +612,7 @@ function OperatorAvatar(){return <div style={{display:"flex",alignItems:"center"
     <svg width="40" height="40" viewBox="0 0 48 48"><circle cx="24" cy="24" r="24" fill="#F4ECFE"/><circle cx="24" cy="20" r="8" fill="#A855F7"/><path d="M9 41c0-8.5 6.7-13 15-13s15 4.5 15 13" fill="#820AD1"/><path d="M13 23a11 11 0 0 1 22 0" fill="none" stroke="#6B21A8" strokeWidth="2.6" strokeLinecap="round"/><rect x="10.5" y="22" width="4.5" height="8" rx="2.2" fill="#6B21A8"/><rect x="33" y="22" width="4.5" height="8" rx="2.2" fill="#6B21A8"/></svg>
     <span className="pulse-dot" style={{position:"absolute",bottom:1,right:1,width:11,height:11,borderRadius:"50%",background:T.wa,border:"2px solid #fff"}}/>
   </div>
-  <div><div style={{fontSize:13,fontWeight:700,color:T.ink,lineHeight:1.2}}>Un asesor te responde</div><div style={{fontSize:11.5,color:T.waDeep,fontWeight:600}}>En línea · &lt;5 min</div></div>
+  <div><div style={{fontSize:13,fontWeight:700,color:T.ink,lineHeight:1.2}}>Un asesor te responde</div><div style={{fontSize:11.5,color:T.waDeep,fontWeight:600}}>Por WhatsApp, de principio a fin</div></div>
 </div>;}
 
 function PaymentStrip(){const ms=[["Nequi","#200073"],["Bancolombia","#FDDA24"],["Daviplata","#ED1C27"],["Mercado Pago","#00AEEF"],["PSE","#0033A0"],["Bre-B","#7C3AED"]];
@@ -581,7 +632,7 @@ function HeroScene(){
   const g=useParallax(0.018);
   return <div className="hero-globe" style={{position:"absolute",inset:0,zIndex:0,pointerEvents:"none",overflow:"visible"}}>
     <div ref={g} style={{position:"absolute",top:-30,right:-70,width:430,height:430,opacity:.4,willChange:"transform"}}><Globe/></div>
-    <div style={{position:"absolute",bottom:40,left:-6,background:"#fff",borderRadius:13,padding:"7px 12px",fontSize:11.5,fontWeight:700,color:P,boxShadow:T.s2,animation:"floaty 8s ease-in-out infinite",display:"flex",alignItems:"center",gap:7}}><span style={{width:7,height:7,borderRadius:"50%",background:T.wa}} className="pulse-dot"/>5 países en vivo</div>
+    <div style={{position:"absolute",bottom:40,left:-6,background:"#fff",borderRadius:13,padding:"7px 12px",fontSize:11.5,fontWeight:700,color:P,boxShadow:T.s2,animation:"floaty 8s ease-in-out infinite",display:"flex",alignItems:"center",gap:7}}><span style={{width:7,height:7,borderRadius:"50%",background:T.wa}} className="pulse-dot"/>6 países en vivo</div>
   </div>;
 }
 
@@ -591,7 +642,7 @@ function BizTile({glyph,col,size=46}){
 
 function BusinessLines(){
   const L=[
-    {t:"DASH Remesas",d:"Envía y recibe en 5 países",g:"$",c:"#820AD1",on:true,ctx:"DASH Remesas"},
+    {t:"DASH Remesas",d:"Envía y recibe en 6 países",g:"$",c:"#820AD1",on:true,ctx:"DASH Remesas"},
     {t:"DASH USDT",d:"Compra y vende dólar digital",g:"₮",c:"#26A17B",on:true,ctx:"DASH USDT"},
     {t:"DASH OTC",d:"Operaciones de alto volumen",g:"OTC",c:"#5C5470",on:true,ctx:"DASH OTC"},
   ];
@@ -761,18 +812,23 @@ function RatePill({style,label,val,live,usdt}){
 }
 function HeroAside({rates}){
   const g=useParallax(0.02);
-  const arsPer=(rates&&rates.COP&&rates.ARS)?(rates.ARS/rates.COP*0.95):0.384;
+  // el factor sale del motor (cf), no de una constante suelta: la pildora
+  // decorativa y el simulador no pueden decir cosas distintas
+  const arsPer=(rates&&rates.COP&&rates.ARS)?(rates.ARS/rates.COP*cf("COP","ARS")):0.384;
   const usdtCop=(rates&&rates.COP)?Math.round(rates.COP).toLocaleString("es-CO"):"3.600";
   return <div className="hero-globe" style={{position:"absolute",inset:0,zIndex:0,pointerEvents:"none"}}>
     <div ref={g} style={{position:"absolute",top:"50%",left:"54%",transform:"translate(-50%,-50%)",width:470,height:470,opacity:.5,willChange:"transform"}}><Globe/></div>
     <RatePill style={{top:"4%",left:"-2%",animation:"floaty 8s ease-in-out infinite"}} label="COP → ARS" val={arsPer.toFixed(3)}/>
     <RatePill style={{bottom:"8%",left:"3%",animation:"floaty3 10s ease-in-out infinite"}} label="USDT" val={usdtCop+" COP"} usdt/>
-    <RatePill style={{top:"38%",right:"-3%",animation:"floaty2 9s ease-in-out infinite"}} label="5 países" val="en vivo" live/>
+    <RatePill style={{top:"38%",right:"-3%",animation:"floaty2 9s ease-in-out infinite"}} label="6 países" val="en vivo" live/>
   </div>;
 }
 function RateBoard({rates}){
-  const rows=[["CO","COP"],["AR","ARS"],["VE","VES"],["MX","MXN"],["CL","CLP"]];
-  const seeds=[[.6,.8,.5,.9,.7],[.5,.7,.9,.6,.8],[.8,.5,.7,.6,.9],[.6,.9,.7,.8,.5],[.7,.6,.8,.9,.6]];
+  const rows=[["CO","COP"],["AR","ARS"],["VE","VES"],["MX","MXN"],["CL","CLP"],["PE","PEN"]];
+  // Una serie decorativa por fila. Al anadir Peru hacia falta la sexta: con cinco,
+  // seeds[5] era undefined y RateBoard reventaba al renderizar.
+  const seeds=[[.6,.8,.5,.9,.7],[.5,.7,.9,.6,.8],[.8,.5,.7,.6,.9],[.6,.9,.7,.8,.5],[.7,.6,.8,.9,.6],[.6,.7,.9,.5,.8]];
+  const serie=i=>seeds[i%seeds.length];
   return <div style={{background:"#fff",border:"1px solid "+T.border,borderRadius:T.rCard,padding:"22px 22px 14px",boxShadow:T.s3}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
       <span style={{fontWeight:700,fontSize:15,color:T.ink}}>Tasas en vivo · 1 USDT</span>
@@ -781,8 +837,8 @@ function RateBoard({rates}){
     {rows.map((r,i)=>{const v=rates&&rates[r[1]]?rates[r[1]]:0;return <div key={r[1]} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 0",borderTop:i?"1px solid "+T.border:"none"}}>
       <svg width="24" height="18" viewBox="0 0 40 30" style={{borderRadius:4,flexShrink:0,boxShadow:"0 1px 2px rgba(0,0,0,.12)"}}>{flagInner(r[0])}</svg>
       <span style={{fontSize:13.5,fontWeight:600,color:T.ink2,flex:1}}>{r[1]}</span>
-      <span style={{display:"inline-flex",alignItems:"flex-end",gap:2,height:16}}>{seeds[i].map((h,j)=><span key={j} style={{width:3,height:(h*16)+"px",borderRadius:1.5,background:j===4?T.wa:T.borderHi}}/>)}</span>
-      <span style={{fontSize:14.5,fontWeight:800,color:T.ink,letterSpacing:-0.3,minWidth:78,textAlign:"right"}}>{v?v.toLocaleString("es-CO"):"—"}</span>
+      <span style={{display:"inline-flex",alignItems:"flex-end",gap:2,height:16}}>{serie(i).map((h,j)=><span key={j} style={{width:3,height:(h*16)+"px",borderRadius:1.5,background:j===4?T.wa:T.borderHi}}/>)}</span>
+      <span style={{fontSize:14.5,fontWeight:800,color:T.ink,letterSpacing:-0.3,minWidth:78,textAlign:"right"}}>{v?(v<100?v.toLocaleString("es-CO",{minimumFractionDigits:2,maximumFractionDigits:2}):v.toLocaleString("es-CO")):"—"}</span>
     </div>})}
     <p style={{fontSize:10.5,color:T.ink3,textAlign:"center",margin:"12px 0 2px"}}>Referencial de mercado · confirmamos por WhatsApp</p>
   </div>;
