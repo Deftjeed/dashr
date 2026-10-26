@@ -808,8 +808,12 @@ function UsdtPanel({rates,since,src,miss}){
   const info=CU.find(x=>x.c===cur)||{s:"$",sub:cur,n:""};
   const sym=info.s;
   const f=n=>n.toLocaleString("es-CO");
-  // los precios unitarios llevan decimales en monedas pequenas; los totales no
-  const fp=n=>n.toLocaleString("es-CO",{minimumFractionDigits:dec,maximumFractionDigits:dec});
+  // Los precios unitarios llevan decimales en monedas pequenas; los totales no.
+  // El minimo se queda en 2 aunque el maximo sea 3: con minimo 3, un sol a 3,49
+  // se pintaba "S/3,490", que a primera vista se lee como tres mil cuatrocientos
+  // noventa. Con minimo 2 sale "S/3,49", y "S/3,316" conserva su tercer decimal
+  // porque ahi el digito si lleva informacion. El valor no cambia, solo su forma.
+  const fp=n=>n.toLocaleString("es-CO",{minimumFractionDigits:Math.min(dec,2),maximumFractionDigits:dec});
   // el porcentaje tambien con coma decimal: "3,5%" junto a "$18,71", no "3.5%"
   const fpc=n=>n.toLocaleString("es-CO",{minimumFractionDigits:1,maximumFractionDigits:1});
   // --- lógica del simulador ---
