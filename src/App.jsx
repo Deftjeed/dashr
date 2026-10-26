@@ -359,7 +359,11 @@ export default function App(){
   // La barra fija de WhatsApp solo tiene sentido cuando el CTA de la tarjeta no se ve.
   // Con los dos en pantalla a la vez se duplicaba el boton y la barra tapaba el aviso
   // "Confirmamos la tasa antes de que envies".
-  const[ctaALaVista,setCtaALaVista]=useState(true);
+  // Arranca en false (barra VISIBLE) a proposito. Si IntersectionObserver no
+  // responde -- webview, pestana restaurada, pagina sin pintar -- el valor inicial
+  // es el que se queda: con true el cliente se quedaba sin ningun CTA a mano.
+  // Asi el peor caso es un boton de mas, nunca ninguno.
+  const[ctaALaVista,setCtaALaVista]=useState(false);
   const ctaRef=useRef(null);
   const[src,setSrc]=useState("live");
   const[miss,setMiss]=useState([]);
@@ -383,9 +387,9 @@ export default function App(){
   useEffect(()=>{
     const els=typeof IntersectionObserver==="function"
       ? Array.prototype.slice.call(document.querySelectorAll("[data-cta-wa]")) : [];
-    // Sin IntersectionObserver o sin CTA que observar, la barra se queda visible.
-    // Se aplaza para no llamar a setState de forma sincrona dentro del efecto.
-    if(!els.length){const t=setTimeout(()=>setCtaALaVista(false),0);return()=>clearTimeout(t)}
+    // Sin IntersectionObserver o sin CTA que observar no hay nada que hacer:
+    // el estado inicial ya deja la barra visible.
+    if(!els.length)return;
     const vistos=new Set();
     const obs=new IntersectionObserver(es=>{
       es.forEach(e=>{e.isIntersecting?vistos.add(e.target):vistos.delete(e.target)});
