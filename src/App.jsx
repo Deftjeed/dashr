@@ -778,22 +778,27 @@ function UsdtPanel({rates,since,src,miss}){
   // Margen OTC por moneda. Se aplica a cada lado, asi que el margen de ida y
   // vuelta es el doble: 7% en COP/MXN/CLP, 6% en VES, 10% en ARS.
   //
-  // PEN: null a proposito. El spread de compraventa de USDT en soles esta
-  // PENDIENTE de decision comercial. NO es el 7% del simulador de remesas: aquel
-  // se aplica al envio con destino PEN y este es otra cosa. Mientras sea null, el
-  // panel muestra la tasa de mercado real pero NO inventa precios de compra y
-  // venta; manda la operacion a WhatsApp para que el asesor cotice.
-  const SP={COP:0.035,VES:0.03,ARS:0.05,MXN:0.035,CLP:0.035,PEN:null};
+  // PEN: 5% por lado, aprobado por Jean el 2026-10-26. Mismo tratamiento que ARS.
+  // Margen de ida y vuelta: 10%. NO tiene relacion con el 7% del simulador de
+  // remesas, que se aplica al envio con destino PEN y es otra cosa distinta.
+  //
+  // El mecanismo de "spread pendiente" (null) se deja en pie a proposito: si
+  // manana entra una septima moneda sin precio acordado, el panel la mostrara
+  // con la tasa de mercado y "A convenir" en vez de inventarle un numero.
+  const SP={COP:0.035,VES:0.03,ARS:0.05,MXN:0.035,CLP:0.035,PEN:0.05};
   const spDef=SP[cur];
   const spreadPend=spDef===null||spDef===undefined;
   const sp=spreadPend?0:spDef;
-  // El precio se redondeaba SIEMPRE a entero. En monedas de unidad pequena eso
-  // destroza el margen declarado: con MXN a 18,71 daba compra 18 y venta 19, o sea
-  // 3,79% a un lado y 1,55% al otro en vez del 3,5% simetrico de la tabla. Se cobraba
-  // de mas a quien vende y de menos a quien compra. Las monedas con referencia menor
-  // a 100 conservan 2 decimales; el resto siguen en entero, como hasta ahora.
-  const dec=ref>0&&ref<100?2:0;
-  const redP=v=>dec?Math.round(v*100)/100:Math.round(v);
+  // Cuanto mas pequena es la unidad, mas precision hace falta para que el spread
+  // declarado se cumpla de verdad. Redondeando SIEMPRE a entero, MXN a 18,71 daba
+  // compra 18 y venta 19: 3,79% a un lado y 1,55% al otro en vez del 3,5% de la
+  // tabla, cobrando de mas a quien vende. Con 2 decimales MXN queda perfecto, pero
+  // el sol (3,49) es aun mas pequeno y a 2 decimales su 5% sale 5,10%/4,90%.
+  // De ahi la escalera: 3 decimales por debajo de 10, 2 por debajo de 100, entero
+  // por encima. Asi las seis monedas quedan con menos de 0,03 pp de asimetria.
+  const dec=ref<=0?0:(ref<10?3:(ref<100?2:0));
+  const DECF=Math.pow(10,dec);
+  const redP=v=>dec?Math.round(v*DECF)/DECF:Math.round(v);
   const compra=redP(ref*(1-sp)), venta=redP(ref*(1+sp)); // compra=DASH compra / venta=DASH vende
   // useCountUp anima con enteros; en monedas con decimales se muestra el valor directo
   const cRefI=useCountUp(Math.round(ref)), cBuyI=useCountUp(Math.round(compra)), cSellI=useCountUp(Math.round(venta));
