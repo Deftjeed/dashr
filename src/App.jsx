@@ -57,6 +57,8 @@ function calc(a,f,t,r){if(!a||a<=0||f===t||!r||!r[f]||!r[t]||!(r[f]>0)||!(r[t]>0
 // ══════════ CONFIG ══════════
 const WA="573117405064";
 const IG="https://instagram.com/dashremesas";
+// codigo de moneda -> codigo de pais, para FlagSvg
+const PAIS={COP:"CO",ARS:"AR",VES:"VE",MXN:"MX",CLP:"CL",PEN:"PE"};
 const CU=[{c:"COP",n:"Colombia",s:"$",sub:"Peso colombiano"},{c:"ARS",n:"Argentina",s:"$",sub:"Peso argentino"},{c:"VES",n:"Venezuela",s:"Bs.",sub:"Bolívar"},{c:"MXN",n:"México",s:"$",sub:"Peso mexicano"},{c:"CLP",n:"Chile",s:"$",sub:"Peso chileno"},{c:"PEN",n:"Perú",s:"S/",sub:"Sol peruano"}];
 const fm=n=>Math.floor(n).toLocaleString("es-CO");
 const pa=s=>parseInt(s.replace(/[^0-9]/g,""),10)||0;
@@ -511,7 +513,7 @@ export default function App(){
       <p style={{color:T.ink2,fontSize:16.5,lineHeight:1.65,marginBottom:24,maxWidth:460}}>Operaciones rápidas, atención personalizada y cotizaciones actualizadas. Tu dólar digital como parte natural de tu vida financiera en DASH — sin complicaciones de exchange.</p>
       <button data-cta-wa onClick={()=>openWA("USDT")} className="btn-wa" style={{background:T.wa,color:"#fff",border:"none",borderRadius:14,padding:"16px 32px",fontSize:16,fontWeight:700,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:9,boxShadow:"0 8px 24px rgba(37,211,102,0.3)"}}><WASvg/> Operar USDT por WhatsApp</button>
     </Reveal>
-    <Reveal delay={0.1}><UsdtPanel rates={rates} since={since}/></Reveal>
+    <Reveal delay={0.1}><UsdtPanel rates={rates} since={since} src={src} miss={miss}/></Reveal>
   </div>
 </section>
 
@@ -748,17 +750,28 @@ function parseUsdt(s){
   return Number.isFinite(val)?Math.round(val*100)/100:NaN;
 }
 
-function UsdtPanel({rates,since}){
-  const FIATS=[["COP","Colombia"],["ARS","Argentina"],["VES","Venezuela"],["MXN","México"],["CLP","Chile"]];
+function UsdtPanel({rates,since,src,miss}){
+  // Las monedas salen de CU, el mismo catalogo que usa el simulador de remesas:
+  // una sola fuente de verdad. Antes este panel tenia su propia lista de cinco y
+  // por eso Peru entro en el simulador pero no aqui.
+  const FIATS=CU;
   const[cur,setCur]=useState("COP");
   const[mode,setMode]=useState("sell"); // 'sell' = cliente vende (precio compra DASH) · 'buy' = cliente compra (precio venta DASH)
   const[qty,setQty]=useState("60");
   const[confirming,setConfirming]=useState(false);
   const ref=(rates&&rates[cur]>0)?rates[cur]:0;
-  // Margen por moneda. Se aplica a cada lado, asi que el margen de ida y vuelta
-  // es el doble: 7% en COP/MXN/CLP, 6% en VES, 10% en ARS.
-  const SP={COP:0.035,VES:0.03,ARS:0.05,MXN:0.035,CLP:0.035};
-  const sp=SP[cur]||0.03;
+  // Margen OTC por moneda. Se aplica a cada lado, asi que el margen de ida y
+  // vuelta es el doble: 7% en COP/MXN/CLP, 6% en VES, 10% en ARS.
+  //
+  // PEN: null a proposito. El spread de compraventa de USDT en soles esta
+  // PENDIENTE de decision comercial. NO es el 7% del simulador de remesas: aquel
+  // se aplica al envio con destino PEN y este es otra cosa. Mientras sea null, el
+  // panel muestra la tasa de mercado real pero NO inventa precios de compra y
+  // venta; manda la operacion a WhatsApp para que el asesor cotice.
+  const SP={COP:0.035,VES:0.03,ARS:0.05,MXN:0.035,CLP:0.035,PEN:null};
+  const spDef=SP[cur];
+  const spreadPend=spDef===null||spDef===undefined;
+  const sp=spreadPend?0:spDef;
   // El precio se redondeaba SIEMPRE a entero. En monedas de unidad pequena eso
   // destroza el margen declarado: con MXN a 18,71 daba compra 18 y venta 19, o sea
   // 3,79% a un lado y 1,55% al otro en vez del 3,5% simetrico de la tabla. Se cobraba
@@ -770,6 +783,10 @@ function UsdtPanel({rates,since}){
   // useCountUp anima con enteros; en monedas con decimales se muestra el valor directo
   const cRefI=useCountUp(Math.round(ref)), cBuyI=useCountUp(Math.round(compra)), cSellI=useCountUp(Math.round(venta));
   const cRef=dec?ref:cRefI, cBuy=dec?compra:cBuyI, cSell=dec?venta:cSellI;
+  // Simbolo y nombre reales de la moneda. El panel escribia "$" para todas,
+  // incluida VES (Bs.). Peru necesita "S/".
+  const info=CU.find(x=>x.c===cur)||{s:"$",sub:cur,n:""};
+  const sym=info.s;
   const f=n=>n.toLocaleString("es-CO");
   // los precios unitarios llevan decimales en monedas pequenas; los totales no
   const fp=n=>n.toLocaleString("es-CO",{minimumFractionDigits:dec,maximumFractionDigits:dec});
@@ -777,7 +794,10 @@ function UsdtPanel({rates,since}){
   const fpc=n=>n.toLocaleString("es-CO",{minimumFractionDigits:1,maximumFractionDigits:1});
   // --- lógica del simulador ---
   const MAX_USDT=100000000;
-  const priceOk=ref>0&&compra>0&&venta>0;
+  const refOk=ref>0;
+  // Distinguir los dos estados: "no hay tasa de mercado" y "hay tasa pero aun no
+  // tenemos spread para esta moneda". Mezclarlos daria un aviso enganoso.
+  const priceOk=refOk&&!spreadPend&&compra>0&&venta>0;
   const price=mode==="sell"?compra:venta;
   const parsed=parseUsdt(qty);
   const qtyValid=Number.isFinite(parsed)&&parsed>0&&parsed<=MAX_USDT;
@@ -797,19 +817,32 @@ function UsdtPanel({rates,since}){
   const reset=fn=>(...a)=>{setConfirming(false);fn(...a);};
   const pickMode=m=>{setMode(m);setConfirming(false);};
   const openWAsim=()=>{
-    if(!montoOk)return;
-    // El mensaje repite EXACTAMENTE lo que vio el cliente, margen incluido.
     const verbo=mode==="sell"?"vender":"comprar";
-    const resultado=mode==="sell"?"Recibiría":"Pagaría";
-    const signo=mode==="sell"?"\u2212":"+";
-    const msg=`Hola DASH, quiero ${verbo} ${qDisp} USDT.\n`+
-      `Precio de mercado: $${fp(ref)} ${cur}/USDT.\n`+
-      `Margen DASH (${fpc(margenPct)}%): ${signo}$${f(margenTot)} ${cur}.\n`+
-      `Precio efectivo: $${fp(price)} ${cur}/USDT.\n`+
-      `${resultado}: $${f(total)} ${cur}.\n`+
-      `Quiero continuar con la operación.`;
+    let msg;
+    if(spreadPend){
+      // Sin spread publicado no se manda ningun precio efectivo: solo la cantidad
+      // y la tasa de mercado, que si es real. El asesor cotiza.
+      if(!qtyValid||!refOk)return;
+      msg=`Hola DASH, quiero ${verbo} ${qDisp} USDT en ${info.sub.toLowerCase()} (${cur}).\n`+
+        `Tasa de mercado de referencia: ${sym}${fp(ref)} ${cur}/USDT.\n`+
+        `Aún no tienen publicado el precio de DASH para ${cur}: ¿me lo confirman?`;
+    }else{
+      if(!montoOk)return;
+      // El mensaje repite EXACTAMENTE lo que vio el cliente, margen incluido.
+      const resultado=mode==="sell"?"Recibiría":"Pagaría";
+      const signo=mode==="sell"?"\u2212":"+";
+      msg=`Hola DASH, quiero ${verbo} ${qDisp} USDT.\n`+
+        `Precio de mercado: ${sym}${fp(ref)} ${cur}/USDT.\n`+
+        `Margen DASH (${fpc(margenPct)}%): ${signo}${sym}${f(margenTot)} ${cur}.\n`+
+        `Precio efectivo: ${sym}${fp(price)} ${cur}/USDT.\n`+
+        `${resultado}: ${sym}${f(total)} ${cur}.\n`+
+        `Quiero continuar con la operación.`;
+    }
     window.open("https://wa.me/"+WA+"?text="+encodeURIComponent(msg),"_blank");
   };
+  // Misma honestidad que el simulador: "En vivo" solo si la fuente es live y esta
+  // moneda concreta no viene de fallback ni de un proxy USD.
+  const tasaViva=src==="live"&&(!miss||miss.indexOf(cur)<0);
   const isSell=mode==="sell";
   const accent=isSell?T.usdt:P;
   return <div style={{position:"relative",maxWidth:400,margin:"0 auto",paddingTop:78}}>
@@ -827,22 +860,28 @@ function UsdtPanel({rates,since}){
         <span style={{fontSize:11,color:T.ink3}}>Actualizado hace {since}s</span>
       </div>
       <div style={{display:"flex",gap:4,marginBottom:18,background:T.tintSoft,borderRadius:12,padding:4,border:"1px solid "+T.border}}>
-        {FIATS.map(x=><button key={x[0]} onClick={()=>setCur(x[0])} title={x[1]} style={{flex:1,border:"none",borderRadius:9,padding:"7px 2px",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700,background:cur===x[0]?"#fff":"transparent",color:cur===x[0]?T.ink:T.ink3,boxShadow:cur===x[0]?T.s1:"none",transition:"all .2s"}}>{x[0]}</button>)}
+        {FIATS.map(x=><button key={x.c} onClick={()=>{setCur(x.c);setConfirming(false)}} title={x.n+" · "+x.sub} style={{flex:1,border:"none",borderRadius:9,padding:"7px 1px",cursor:"pointer",fontFamily:"inherit",fontSize:11.5,fontWeight:700,background:cur===x.c?"#fff":"transparent",color:cur===x.c?T.ink:T.ink3,boxShadow:cur===x.c?T.s1:"none",transition:"all .2s",minWidth:0}}>{x.c}</button>)}
       </div>
       <div style={{textAlign:"center",marginBottom:16}}>
-        <div style={{fontSize:11,color:T.ink3,fontWeight:600,textTransform:"uppercase",letterSpacing:.7}}>Precio de mercado · referencia</div>
-        <div key={Math.round(ref)+cur} style={{fontSize:34,fontWeight:800,color:T.usdt,letterSpacing:-1,marginTop:3,textShadow:"0 2px 16px rgba(38,161,123,.25)",animation:"priceUp .6s ease-out"}}>{fp(cRef)} <span style={{fontSize:15,color:T.ink3,fontWeight:600}}>{cur}</span></div>
+        <div style={{display:"inline-flex",alignItems:"center",gap:7,marginBottom:2}}>
+          <FlagSvg country={PAIS[cur]} size={17}/>
+          <span style={{fontSize:11,color:T.ink3,fontWeight:600,textTransform:"uppercase",letterSpacing:.7}}>{info.sub} · mercado</span>
+        </div>
+        <div key={Math.round(ref*100)+cur} style={{fontSize:34,fontWeight:800,color:T.usdt,letterSpacing:-1,marginTop:1,textShadow:"0 2px 16px rgba(38,161,123,.25)",animation:"priceUp .6s ease-out"}}>{sym}{fp(cRef)} <span style={{fontSize:15,color:T.ink3,fontWeight:600}}>{cur}</span></div>
+        <div style={{display:"inline-flex",alignItems:"center",gap:5,marginTop:5,fontSize:10.5,fontWeight:600,color:tasaViva?T.waDeep:"#8A6100",background:tasaViva?"#EAFBF1":"#FFF5E0",padding:"3px 10px",borderRadius:T.rPill}}>
+          <span className={tasaViva?"pulse-dot":""} style={{width:6,height:6,borderRadius:"50%",background:tasaViva?T.wa:"#E8A317"}}/>{tasaViva?"En vivo":"Referencial"}
+        </div>
       </div>
       {/* Selector VENDER / COMPRAR (tarjetas seleccionables) */}
       <div style={{display:"flex",gap:12,marginBottom:16}}>
         <button onClick={()=>pickMode("sell")} style={{flex:1,textAlign:"left",cursor:"pointer",fontFamily:"inherit",background:isSell?"#F1FAF6":"#fff",border:"1.5px solid "+(isSell?"#B8E6D2":T.border),borderRadius:16,padding:"12px 14px",transition:"all .18s",boxShadow:isSell?T.s1:"none"}}>
           <div style={{fontSize:11,color:T.usdt,fontWeight:800,letterSpacing:.3}}>VENDER USDT</div>
-          <div style={{fontSize:15,fontWeight:800,color:T.ink,letterSpacing:-0.4,marginTop:2}}>{priceOk?"$"+fp(cBuy):"—"}</div>
+          <div style={{fontSize:15,fontWeight:800,color:spreadPend?T.ink3:T.ink,letterSpacing:-0.4,marginTop:2}}>{spreadPend?"A convenir":(priceOk?sym+fp(cBuy):"—")}</div>
           <div style={{fontSize:9.5,color:T.ink3,marginTop:1}}>te pagamos · {cur}/USDT</div>
         </button>
         <button onClick={()=>pickMode("buy")} style={{flex:1,textAlign:"left",cursor:"pointer",fontFamily:"inherit",background:!isSell?T.tintSoft:"#fff",border:"1.5px solid "+(!isSell?"#E4D4F5":T.border),borderRadius:16,padding:"12px 14px",transition:"all .18s",boxShadow:!isSell?T.s1:"none"}}>
           <div style={{fontSize:11,color:P,fontWeight:800,letterSpacing:.3}}>COMPRAR USDT</div>
-          <div style={{fontSize:15,fontWeight:800,color:T.ink,letterSpacing:-0.4,marginTop:2}}>{priceOk?"$"+fp(cSell):"—"}</div>
+          <div style={{fontSize:15,fontWeight:800,color:spreadPend?T.ink3:T.ink,letterSpacing:-0.4,marginTop:2}}>{spreadPend?"A convenir":(priceOk?sym+fp(cSell):"—")}</div>
           <div style={{fontSize:9.5,color:T.ink3,marginTop:1}}>pagas · {cur}/USDT</div>
         </button>
       </div>
@@ -857,32 +896,40 @@ function UsdtPanel({rates,since}){
         </div>
 
         {/* Resultado / validación */}
-        {!priceOk
+        {spreadPend
+          ? <div style={{background:"#FFF8E8",border:"1px solid #F2DFB0",borderRadius:16,padding:"15px 17px",marginBottom:14}}>
+              <div style={{fontSize:12.5,fontWeight:800,color:"#8A6100",marginBottom:5}}>Precio en {info.sub.toLowerCase()} aún sin publicar</div>
+              <div style={{fontSize:12,color:T.ink2,lineHeight:1.55}}>Arriba tienes la tasa de mercado real de USDT en {cur}. El precio de compraventa de DASH en {cur} todavía no está publicado, así que no lo mostramos inventado: escríbenos y un asesor te lo da al momento.</div>
+            </div>
+          : !refOk
           ? <div style={{background:"#FBF0F0",border:"1px solid #F3D6D6",borderRadius:14,padding:"14px 16px",fontSize:13,fontWeight:600,color:"#B4453E",textAlign:"center",marginBottom:14}}>Cotización temporalmente no disponible.</div>
           : !montoOk
           ? <div style={{background:"#FBF0F0",border:"1px solid #F3D6D6",borderRadius:14,padding:"14px 16px",fontSize:13,fontWeight:600,color:"#B4453E",textAlign:"center",marginBottom:14}}>Ingresa una cantidad válida de USDT.</div>
           : <div style={{background:isSell?"#F1FAF6":T.tintSoft,border:"1px solid "+(isSell?"#D6F0E4":T.border),borderRadius:16,padding:"16px 18px",marginBottom:14}}>
               <div style={{fontSize:11,color:T.ink3,fontWeight:600,textTransform:"uppercase",letterSpacing:.5}}>{isSell?"Recibirás aproximadamente":"Pagarás aproximadamente"}</div>
-              <div style={{fontSize:30,fontWeight:800,color:accent,letterSpacing:-1,marginTop:3}}>${f(cTotal)} <span style={{fontSize:14,color:T.ink3,fontWeight:600}}>{cur}</span></div>
-              <div style={{fontSize:11.5,color:T.ink2,marginTop:5,fontWeight:600}}>Precio efectivo: ${fp(price)} {cur} / USDT</div>
+              <div style={{fontSize:30,fontWeight:800,color:accent,letterSpacing:-1,marginTop:3}}>{sym}{f(cTotal)} <span style={{fontSize:14,color:T.ink3,fontWeight:600}}>{cur}</span></div>
+              <div style={{fontSize:11.5,color:T.ink2,marginTop:5,fontWeight:600}}>Precio efectivo: {sym}{fp(price)} {cur} / USDT</div>
               <div style={{marginTop:10,paddingTop:10,borderTop:"1px dashed "+(isSell?"#CBE8DA":T.borderHi),fontSize:11.5,color:T.ink2,lineHeight:1.55}}>
                 <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
-                  <span>Precio de mercado</span><span style={{fontWeight:700,color:T.ink}}>${fp(ref)} {cur}</span>
+                  <span>Precio de mercado</span><span style={{fontWeight:700,color:T.ink}}>{sym}{fp(ref)} {cur}</span>
                 </div>
                 <div style={{display:"flex",justifyContent:"space-between",gap:8,marginTop:3}}>
                   <span>Nuestro margen ({fpc(margenPct)}%)</span>
-                  <span style={{fontWeight:700,color:T.ink}}>{isSell?"−":"+"}${f(margenTot)} {cur}</span>
+                  <span style={{fontWeight:700,color:T.ink}}>{isSell?"−":"+"}{sym}{f(margenTot)} {cur}</span>
                 </div>
               </div>
             </div>}
 
-        <button onClick={()=>setConfirming(true)} disabled={!montoOk} className="btn-glow"
-          style={{width:"100%",justifyContent:"center",background:!montoOk?"#C9C6D2":T.usdt,color:"#fff",border:"none",borderRadius:14,padding:15,fontSize:15.5,fontWeight:700,cursor:!montoOk?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:8,boxShadow:!montoOk?"none":"0 8px 22px rgba(38,161,123,.32)",transition:"all .2s"}}>Continuar</button>
+        {spreadPend
+          ? <button data-cta-wa onClick={openWAsim} disabled={!qtyValid||!refOk} className="btn-glow"
+              style={{width:"100%",justifyContent:"center",background:(!qtyValid||!refOk)?"#C9C6D2":T.wa,color:"#fff",border:"none",borderRadius:14,padding:15,fontSize:15.5,fontWeight:700,cursor:(!qtyValid||!refOk)?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:8,boxShadow:(!qtyValid||!refOk)?"none":"0 8px 22px rgba(37,211,102,.32)",transition:"all .2s"}}><WASvg size={17}/> Pedir precio por WhatsApp</button>
+          : <button onClick={()=>setConfirming(true)} disabled={!montoOk} className="btn-glow"
+              style={{width:"100%",justifyContent:"center",background:!montoOk?"#C9C6D2":T.usdt,color:"#fff",border:"none",borderRadius:14,padding:15,fontSize:15.5,fontWeight:700,cursor:!montoOk?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:8,boxShadow:!montoOk?"none":"0 8px 22px rgba(38,161,123,.32)",transition:"all .2s"}}>Continuar</button>}
       </> : <>
         {/* Resumen antes de WhatsApp (NO ejecuta operación real) */}
         <div style={{background:isSell?"#F1FAF6":T.tintSoft,border:"1.5px solid "+(isSell?"#D6F0E4":"#E4D4F5"),borderRadius:16,padding:"18px 18px 16px",marginBottom:14}}>
           <div style={{fontSize:12,fontWeight:800,color:accent,letterSpacing:.4,marginBottom:12}}>{isSell?"VENTA DE USDT":"COMPRA DE USDT"}</div>
-          {[[isSell?"Vendes":"Compras",qDisp+" USDT"],["Precio de mercado","$"+fp(ref)+" "+cur],["Nuestro margen ("+fpc(margenPct)+"%)",(isSell?"−":"+")+"$"+f(margenTot)+" "+cur],["Precio efectivo","$"+fp(price)+" "+cur],[isSell?"Recibes":"Pagas","$"+f(total)+" "+cur]].map((r,i)=>(
+          {[[isSell?"Vendes":"Compras",qDisp+" USDT"],["Precio de mercado",sym+fp(ref)+" "+cur],["Nuestro margen ("+fpc(margenPct)+"%)",(isSell?"−":"+")+sym+f(margenTot)+" "+cur],["Precio efectivo",sym+fp(price)+" "+cur],[isSell?"Recibes":"Pagas",sym+f(total)+" "+cur]].map((r,i)=>(
             <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderTop:i?"1px solid rgba(0,0,0,.06)":"none"}}>
               <span style={{fontSize:12.5,color:T.ink3,fontWeight:600}}>{r[0]}</span>
               <span style={{fontSize:i===4?16:14,fontWeight:800,color:i===4?accent:T.ink}}>{r[1]}</span>
