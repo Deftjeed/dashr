@@ -884,7 +884,7 @@ function UsdtPanel({rates,since,src,miss}){
         </div>
         <div key={Math.round(ref*100)+cur} style={{fontSize:34,fontWeight:800,color:T.usdt,letterSpacing:-1,marginTop:1,textShadow:"0 2px 16px rgba(38,161,123,.25)",animation:"priceUp .6s ease-out"}}>{sym}{fp(cRef)} <span style={{fontSize:15,color:T.ink3,fontWeight:600}}>{cur}</span></div>
         <div style={{display:"inline-flex",alignItems:"center",gap:5,marginTop:5,fontSize:10.5,fontWeight:600,color:tasaViva?T.waDeep:"#8A6100",background:tasaViva?"#EAFBF1":"#FFF5E0",padding:"3px 10px",borderRadius:T.rPill}}>
-          <span className={tasaViva?"pulse-dot":""} style={{width:6,height:6,borderRadius:"50%",background:tasaViva?T.wa:"#E8A317"}}/>{tasaViva?"En vivo":"Referencial"}
+          <span className={tasaViva?"pulse-dot":""} style={{width:6,height:6,borderRadius:"50%",background:tasaViva?T.wa:"#E8A317"}}/>{tasaViva?"En vivo":"Referencial del "+fbFecha()}
         </div>
       </div>
       {/* Selector VENDER / COMPRAR (tarjetas seleccionables) */}
