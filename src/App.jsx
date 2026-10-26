@@ -131,9 +131,12 @@ const CSS = `
   .hero-globe{display:none!important}
   .hero-right{min-height:auto!important}
   .hero-simwrap{margin-top:0!important;margin-left:0!important;max-width:none!important}
-  .hero-flex{padding:18px 18px 36px!important;gap:10px!important}.hero-flex h1{font-size:clamp(38px,12vw,50px)!important;line-height:1.02!important;letter-spacing:-1.6px!important;margin:0 0 14px!important}.hero-flex p{font-size:15.5px!important;line-height:1.55!important}.hero-cta{display:none!important}.hero-right{margin-top:8px}.sim-card{border-radius:24px!important;padding:20px 18px!important;box-shadow:0 14px 40px rgba(130,10,209,.13),0 3px 10px rgba(25,10,46,.05)!important}.mwa{left:0!important;right:0!important;bottom:0!important;padding:9px 16px calc(9px + env(safe-area-inset-bottom))!important;background:rgba(255,255,255,.85)!important;backdrop-filter:blur(20px) saturate(1.6)!important;border-top:1px solid rgba(130,10,209,.09)!important}.mwa button{padding:16px!important;border-radius:16px!important;font-size:16.5px!important}section{padding-top:54px!important;padding-bottom:54px!important}body{padding-bottom:88px!important}.sim-card input,.sim-card select{font-size:16px!important}.hero-flex .btn-outline{display:none!important}.hero-flex .btn-wa{width:100%!important;justify-content:center!important}.hero-flex .btn-wa{display:none!important}.hero-right .btn-wa{display:flex!important;width:100%!important;justify-content:center!important}nav button{display:none!important}
+  .hero-flex{padding:18px 18px 36px!important;gap:10px!important}.hero-flex h1{font-size:clamp(38px,12vw,50px)!important;line-height:1.02!important;letter-spacing:-1.6px!important;margin:0 0 14px!important}.hero-flex p{font-size:15.5px!important;line-height:1.55!important}.hero-cta{display:none!important}.hero-right{margin-top:8px}.sim-card{border-radius:24px!important;padding:20px 18px!important;box-shadow:0 14px 40px rgba(130,10,209,.13),0 3px 10px rgba(25,10,46,.05)!important}.mwa{left:0!important;right:0!important;bottom:0!important;padding:9px 16px calc(9px + env(safe-area-inset-bottom))!important;background:rgba(255,255,255,.85)!important;backdrop-filter:blur(20px) saturate(1.6)!important;border-top:1px solid rgba(130,10,209,.09)!important}.mwa button{padding:16px!important;border-radius:16px!important;font-size:16.5px!important}section{padding-top:54px!important;padding-bottom:54px!important}body{padding-bottom:88px!important}.sim-card input,.sim-card select{font-size:16px!important}.sim-badge{display:none!important}.sim-foot{flex-direction:column!important;align-items:flex-start!important;gap:12px!important}.sim-foot-dcha{text-align:left!important}.hero-flex .btn-outline{display:none!important}.hero-flex .btn-wa{width:100%!important;justify-content:center!important}.hero-flex .btn-wa{display:none!important}.hero-right .btn-wa{display:flex!important;width:100%!important;justify-content:center!important}nav button{display:none!important}
 }
 .mwa{display:none}
+/* Va despues del @media a proposito: con la misma especificidad gana la ultima regla,
+   asi que esta oculta la barra fija aunque el movil la haya puesto en display:flex. */
+.mwa-oculta{display:none!important}
 `;
 
 // El importe visible se anima con requestAnimationFrame. Pero rAF NO se ejecuta cuando
@@ -353,6 +356,11 @@ export default function App(){
   const[ready,setReady]=useState(false);
   const[pulse,setPulse]=useState(0);
   const[since,setSince]=useState(0);
+  // La barra fija de WhatsApp solo tiene sentido cuando el CTA de la tarjeta no se ve.
+  // Con los dos en pantalla a la vez se duplicaba el boton y la barra tapaba el aviso
+  // "Confirmamos la tasa antes de que envies".
+  const[ctaALaVista,setCtaALaVista]=useState(true);
+  const ctaRef=useRef(null);
   const[src,setSrc]=useState("live");
   const[miss,setMiss]=useState([]);
   useEffect(()=>{const ap=r=>{setRates(r.rates);setSrc(r.src||"live");setMiss(r.miss||[])};loadRates().then(r=>{ap(r);setReady(true);setSince(0)});var iv=setInterval(()=>{loadRates().then(r=>{ap(r);setSince(0)})},CACHE_MS);var tk=setInterval(()=>setSince(s=>s+1),1000);return()=>{clearInterval(iv);clearInterval(tk)}},[]);
@@ -367,6 +375,11 @@ export default function App(){
   const hT=v=>{if(v===fromC)setFromC(toC);setToC(v);bump()};
   const openWA=(ctx)=>{const extra=ctx?(" ("+ctx+")"):"";const m=encodeURIComponent("Hola DASHR, quiero hacer una operación"+extra+": Envío: "+fm(amt)+" "+fromC+" Destino: "+toC+" Recibiría: "+fm(result)+" "+toC+" Cómo procedo?");window.open("https://wa.me/"+WA+"?text="+m,"_blank")};
   const toSim=()=>document.getElementById("sim")?.scrollIntoView({behavior:"smooth"});
+  const toPasos=()=>document.getElementById("s-pasos")?.scrollIntoView({behavior:"smooth"});
+  useEffect(()=>{const el=ctaRef.current;
+    if(!el||typeof IntersectionObserver!=="function"){setCtaALaVista(false);return}
+    const obs=new IntersectionObserver(([e])=>setCtaALaVista(e.isIntersecting),{threshold:0.4});
+    obs.observe(el);return()=>obs.disconnect()},[]);
 
   return(
 <div style={{fontFamily:T.font,color:T.ink,background:"#fff",minHeight:"100vh",overflowX:"hidden"}}>
@@ -392,7 +405,7 @@ export default function App(){
     <p style={{fontSize:18,color:T.ink,fontWeight:500,lineHeight:1.55,margin:"0 0 8px"}}>Remesas y USDT en una sola experiencia. Todo por WhatsApp.</p>
     <p style={{fontSize:15,color:T.ink2,lineHeight:1.6,margin:"0 0 28px",maxWidth:440}}>Tasa de mercado en vivo, sin apps ni registros, con un asesor real en cada operación.</p>
     <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
-      <button onClick={()=>openWA()} className="btn-wa" style={{background:T.wa,color:"#fff",border:"none",borderRadius:14,padding:"17px 30px",fontSize:16,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:9,boxShadow:"0 8px 24px rgba(37,211,102,0.32)"}}><WASvg/> Cotizar por WhatsApp</button>
+      <button onClick={toPasos} className="btn-glow" style={{background:P,color:"#fff",border:"none",borderRadius:14,padding:"17px 30px",fontSize:16,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:9,boxShadow:"0 8px 24px rgba(130,10,209,0.30)"}}>Cómo funciona →</button>
       <button onClick={toSim} className="btn-outline" style={{background:"transparent",border:"1.5px solid "+T.borderHi,borderRadius:14,padding:"17px 26px",fontSize:15,fontWeight:600,cursor:"pointer",color:P}}>Simular envío</button>
     </div>
   </div>
@@ -401,7 +414,7 @@ export default function App(){
   <div className="hero-right" style={{flex:"1 1 440px",maxWidth:560,minWidth:0,width:"100%",position:"relative",zIndex:1,minHeight:480}}>
     <HeroAside rates={rates}/>
     <div className="hero-simwrap" style={{position:"relative",zIndex:2,maxWidth:430,marginLeft:"auto",marginTop:60}}>
-      <div style={{position:"absolute",top:-24,left:-18,width:58,height:58,borderRadius:18,background:"linear-gradient(135deg,#26A17B,#16795B)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:26,boxShadow:T.s2,animation:"floaty2 6s ease-in-out infinite",zIndex:3}}>₮</div>
+      <div className="sim-badge" aria-hidden="true" style={{position:"absolute",top:-24,left:-18,width:58,height:58,borderRadius:18,background:"linear-gradient(135deg,#26A17B,#16795B)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:26,boxShadow:T.s2,animation:"floaty2 6s ease-in-out infinite",zIndex:3}}>₮</div>
       <div id="sim" className="sim-card" style={{background:"#fff",borderRadius:T.rCard,padding:"clamp(22px,4vw,28px)",boxShadow:T.s3,border:"1px solid "+T.border,position:"relative"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
           <span style={{fontWeight:700,fontSize:18.5,letterSpacing:-0.3}}>Simulador de envío</span>
@@ -439,10 +452,10 @@ export default function App(){
           <span style={{display:"flex",alignItems:"center",gap:7}}><span className="pulse-dot" style={{width:6,height:6,borderRadius:"50%",background:T.wa}}/>{rate>0?<b style={{color:T.ink}}>1 {fromC} = {rate>=100?rate.toLocaleString("es-CO",{maximumFractionDigits:2}):rate.toFixed(4)} {toC}</b>:"Ingresa un monto"}</span>
           <span style={{fontSize:10.5,color:T.ink3,fontWeight:600}}>{pairLive?"Tasa de mercado":"Referencial"}</span>
         </div>
-        <button onClick={()=>openWA()} disabled={result<=0} className="btn-wa" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,width:"100%",padding:17,border:"none",borderRadius:14,background:result>0?T.wa:"#E6E2EE",color:"#fff",fontSize:16.5,fontWeight:700,cursor:result>0?"pointer":"not-allowed",fontFamily:"inherit",boxShadow:result>0?"0 8px 24px rgba(37,211,102,0.32)":"none"}}><WASvg/> Cotizar por WhatsApp →</button>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginTop:14,paddingTop:14,borderTop:"1px solid "+T.border}}>
+        <button ref={ctaRef} onClick={()=>openWA()} disabled={result<=0} className="btn-wa" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,width:"100%",padding:17,border:"none",borderRadius:14,background:result>0?T.wa:"#E6E2EE",color:"#fff",fontSize:16.5,fontWeight:700,cursor:result>0?"pointer":"not-allowed",fontFamily:"inherit",boxShadow:result>0?"0 8px 24px rgba(37,211,102,0.32)":"none"}}><WASvg/> Cotizar por WhatsApp →</button>
+        <div className="sim-foot" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginTop:14,paddingTop:14,borderTop:"1px solid "+T.border}}>
           <OperatorAvatar/>
-          <div style={{textAlign:"right"}}><div style={{fontSize:13.5,fontWeight:800,color:T.ink,letterSpacing:-.3}}>Atención 1 a 1</div><div style={{fontSize:11,color:T.ink3}}>sin bots ni formularios</div></div>
+          <div className="sim-foot-dcha" style={{textAlign:"right"}}><div style={{fontSize:13.5,fontWeight:800,color:T.ink,letterSpacing:-.3}}>Atención 1 a 1</div><div style={{fontSize:11,color:T.ink3}}>sin bots ni formularios</div></div>
         </div>
         <p style={{textAlign:"center",fontSize:11,color:T.ink3,marginTop:10}}>🔒 Confirmamos la tasa antes de que envíes</p>
       </div>
@@ -559,7 +572,7 @@ export default function App(){
   </div>
 </section>
 
-<section style={{padding:"80px clamp(16px,4vw,48px)",background:"#fff"}}>
+<section id="s-pasos" style={{padding:"80px clamp(16px,4vw,48px)",background:"#fff"}}>
   <Reveal style={{maxWidth:900,margin:"0 auto",textAlign:"center"}}>
     <h2 style={{fontSize:"clamp(26px,4vw,38px)",fontWeight:800,marginBottom:8,letterSpacing:-1.2}}>Así de fácil, en 3 pasos</h2>
     <p style={{color:T.ink3,fontSize:15,marginBottom:48}}>Todo por WhatsApp. Sin apps, sin registros.</p>
@@ -620,7 +633,7 @@ export default function App(){
   </div>
 </footer>
 
-<div className="mwa" style={{position:"fixed",bottom:14,left:14,right:14,zIndex:120}}>
+<div className={"mwa"+(ctaALaVista?" mwa-oculta":"")} style={{position:"fixed",bottom:14,left:14,right:14,zIndex:120}}>
   <button onClick={()=>openWA()} className="btn-wa" style={{width:"100%",justifyContent:"center",background:T.wa,color:"#fff",border:"none",borderRadius:14,padding:16,fontSize:16,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:8,boxShadow:"0 10px 30px rgba(37,211,102,0.45)",fontFamily:"inherit"}}><WASvg size={18}/> Cotizar por WhatsApp</button>
 </div>
 </div>);
