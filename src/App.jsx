@@ -534,7 +534,7 @@ export default function App(){
   <Reveal style={{maxWidth:680,margin:"0 auto 12px",textAlign:"center"}}>
     <span style={{color:P,fontWeight:700,fontSize:13,letterSpacing:.04,textTransform:"uppercase"}}>Red financiera</span>
     <h2 style={{fontSize:"clamp(28px,4.2vw,42px)",fontWeight:800,margin:"12px 0 14px",letterSpacing:-1.4}}>Una red operando en tiempo real</h2>
-    <p style={{color:T.ink2,fontSize:16.5,lineHeight:1.6,maxWidth:520,margin:"0 auto"}}>6 países conectados, dinero moviéndose todos los días. Toca un país (o pasa el mouse) para ver sus corredores activos.</p>
+    <p style={{color:T.ink2,fontSize:16.5,lineHeight:1.6,maxWidth:520,margin:"0 auto"}}>6 países conectados y 15 corredores disponibles. Toca un país (o pasa el mouse) para ver los suyos.</p>
   </Reveal>
   <Reveal delay={0.1} style={{maxWidth:740,margin:"24px auto 0"}}><LatamNetwork/></Reveal>
 </section>
@@ -595,7 +595,7 @@ export default function App(){
     <p style={{color:T.ink3,fontSize:15,marginBottom:48}}>Todo por WhatsApp. Sin apps, sin registros.</p>
   </Reveal>
   <div style={{maxWidth:900,margin:"0 auto",display:"flex",flexWrap:"wrap",justifyContent:"center",gap:40,marginBottom:40}}>
-    {[{n:"01",ic:"💬",t:"Escríbenos",d:"Dinos qué quieres hacer: enviar, recibir u operar USDT."},{n:"02",ic:"💱",t:"Confirma la tasa",d:"Te mostramos la cotización en vivo y haces la transferencia."},{n:"03",ic:"✅",t:"Listo",d:"Recibes en minutos. Comprobante por WhatsApp."}].map((s,i)=>(
+    {[{n:"01",ic:"💬",t:"Escríbenos",d:"Dinos qué quieres hacer: enviar, recibir u operar USDT."},{n:"02",ic:"💱",t:"Confirma la tasa",d:"Te mostramos la cotización en vivo y haces la transferencia."},{n:"03",ic:"✅",t:"Listo",d:"Te confirmamos cada paso y recibes el comprobante por WhatsApp."}].map((s,i)=>(
       <Reveal key={i} delay={i*0.1} style={{flex:"1 1 220px",maxWidth:260}}>
         <div className="card-lift" style={{width:68,height:68,borderRadius:20,background:T.tint,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px",fontSize:26,boxShadow:T.s1}}>{s.ic}</div>
         <div style={{color:P,fontWeight:800,fontSize:14,marginBottom:6,textAlign:"center"}}>{s.n}</div>
@@ -609,7 +609,7 @@ export default function App(){
 <section id="s-faq" style={{padding:"80px clamp(16px,4vw,48px)",background:"#FAF7FF"}}>
   <Reveal style={{maxWidth:700,margin:"0 auto"}}>
     <h2 style={{fontSize:"clamp(26px,4vw,38px)",fontWeight:800,textAlign:"center",marginBottom:40,letterSpacing:-1.2}}>Preguntas <span style={{color:P}}>frecuentes</span></h2>
-    {["¿Qué puedo hacer con DASH?|Enviar y recibir dinero entre 6 países de LATAM, y comprar o vender USDT. Todo por WhatsApp.","¿Cómo funciona la compra/venta de USDT?|Nos escribes, te damos la cotización en vivo y te guiamos paso a paso. Sin exchange ni apps complicadas.","¿Cuánto tarda en llegar una remesa?|Típicamente menos de 30 minutos. Usualmente en menos de 15.","¿Cuánto cobran de comisión?|La tasa del simulador ya incluye todo. Sin cargos ocultos.","¿Necesito descargar algo?|No. Todo funciona por WhatsApp, sin apps ni registros.","¿Es seguro?|Verificación y comprobante de cada operación, con un asesor real acompañándote."].map(function(item,i){var p=item.split("|");return <Fq key={i} q={p[0]} a={p[1]} i={i}/>})}
+    {["¿Qué puedo hacer con DASH?|Enviar y recibir dinero entre 6 países de LATAM, y comprar o vender USDT. Todo por WhatsApp.","¿Cómo funciona la compra/venta de USDT?|Nos escribes, te damos la cotización en vivo y te guiamos paso a paso. Sin exchange ni apps complicadas.","¿Cuánto tarda en llegar una remesa?|Depende del país, del banco y del método de pago. Te damos el tiempo estimado por WhatsApp antes de que envíes, y te avisamos si cambia. No cerramos ninguna operación sin que sepas cuánto va a tardar.","¿Cuánto cobran de comisión?|La tasa del simulador ya incluye todo. Sin cargos ocultos.","¿Necesito descargar algo?|No. Todo funciona por WhatsApp, sin apps ni registros.","¿Es seguro?|Verificación y comprobante de cada operación, con un asesor real acompañándote."].map(function(item,i){var p=item.split("|");return <Fq key={i} q={p[0]} a={p[1]} i={i}/>})}
   </Reveal>
 </section>
 
