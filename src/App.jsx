@@ -4,7 +4,12 @@ import { useState, useEffect, useRef } from "react";
 // FALLBACK_RATES: ultimo recurso, NO tasa de mercado. Cuando se usan, la interfaz
 // las rotula "Referencial". Verificadas en criptoya/binancep2p el 2026-10-24
 // ((ask+bid)/2). Refrescar cada pocas semanas: el VES anterior (875) iba 13% bajo.
-const DEBUG=false,FALLBACK_RATES={COP:3128.5,ARS:1643,VES:1005.5,MXN:18.71,CLP:997,PEN:3.5},CURRENCIES_LIST=["COP","ARS","VES","MXN","CLP","PEN"],CACHE_MS=300000,RETRY_MS=30000,FETCH_TIMEOUT=8000;let _cache=null,_lastAttempt=0,_consecutiveFailures=0;const PROXY_URL="https://dashr-rates.jeans1jean1.workers.dev/rates";
+// FALLBACK_DATE: el dia en que se fijaron las constantes de abajo. Sin esta fecha
+// no habia forma de saber si los respaldos llevaban una semana o seis meses
+// congelados, y un respaldo viejo se convierte en una cotizacion mala sin que
+// nadie se entere. Al renovar las cifras, renovar tambien esta fecha.
+const FALLBACK_DATE="2026-10-25";
+const DEBUG=false,FALLBACK_RATES={COP:3141,ARS:1641,VES:1007.5,MXN:18.73,CLP:996,PEN:3.5},CURRENCIES_LIST=["COP","ARS","VES","MXN","CLP","PEN"],CACHE_MS=300000,RETRY_MS=30000,FETCH_TIMEOUT=8000;let _cache=null,_lastAttempt=0,_consecutiveFailures=0;const PROXY_URL="https://dashr-rates.jeans1jean1.workers.dev/rates";
 function dbg(t,m,d){if(!DEBUG)return;const p="[DASHR "+new Date().toLocaleTimeString()+"]";if(t==="ok")console.log(p+" "+m,d||"");if(t==="warn")console.warn(p+" "+m,d||"");if(t==="err")console.error(p+" "+m,d||"")}
 function fetchTO(u,o,ms){return Promise.race([fetch(u,o),new Promise((_,r)=>{setTimeout(()=>r(new Error("TIMEOUT")),ms)})])}
 async function fpS(f,tt){try{const r=await fetchTO("https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({page:1,rows:5,payTypes:[],asset:"USDT",tradeType:tt,fiat:f,publisherType:null})},FETCH_TIMEOUT);if(!r.ok)return null;var j=await r.json(),ads=j&&j.data?j.data:[],prices=[];for(var i=0;i<ads.length;i++){var p=parseFloat(ads[i].adv&&ads[i].adv.price?ads[i].adv.price:"0");if(p>0)prices.push(p)}if(!prices.length)return null;var s=0;for(var k=0;k<prices.length;k++)s+=prices[k];return s/prices.length}catch(e){dbg("err","P2P "+f+"/"+tt,e.message);return null}}
@@ -31,6 +36,12 @@ async function fCya(){var rates={},cnt=0;var res=await Promise.allSettled(CURREN
 async function fBinance(){var rates={},count=0;var res=await Promise.allSettled(CURRENCIES_LIST.map(c=>fpR(c)));for(var i=0;i<res.length;i++){if(res[i].status==="fulfilled"&&res[i].value>0){rates[CURRENCIES_LIST[i]]=res[i].value;count++}}if(count>0){dbg("ok","BINANCE("+count+"/"+CURRENCIES_LIST.length+")",rates);return{rates:rates,bad:[]}}return null}
 function mrg(api){var m={},miss=[];for(var i=0;i<CURRENCIES_LIST.length;i++){var c=CURRENCIES_LIST[i];if(api&&api[c]&&api[c]>0){m[c]=api[c]}else{m[c]=FALLBACK_RATES[c];miss.push(c)}}return{m:m,miss:miss}}
 function unir(a,b){var o=a.slice();for(var i=0;i<(b||[]).length;i++){if(o.indexOf(b[i])<0)o.push(b[i])}return o}
+// dias transcurridos desde que se fijaron los respaldos
+function fbEdad(){var d=Date.parse(FALLBACK_DATE+"T00:00:00Z");if(!isFinite(d))return null;
+  var dias=Math.floor((Date.now()-d)/86400000);return dias<0?0:dias}
+// texto para la interfaz: "25 de octubre". Se lee "Tasa referencial del 25 de octubre".
+function fbFecha(){var d=new Date(FALLBACK_DATE+"T00:00:00Z");
+  return isNaN(d)?"":d.toLocaleDateString("es-CO",{day:"numeric",month:"long",timeZone:"UTC"})}
 function vld(r){if(!r)return false;for(var i=0;i<CURRENCIES_LIST.length;i++){if(!r[CURRENCIES_LIST[i]]||r[CURRENCIES_LIST[i]]<=0)return false}return true}
 async function loadRates(){var n=Date.now();if(_cache&&n-_cache.ts<CACHE_MS)return _cache;if(_consecutiveFailures>0&&n-_lastAttempt<RETRY_MS)return _cache||{rates:{...FALLBACK_RATES},src:"fallback",miss:CURRENCIES_LIST.slice(),ts:n};_lastAttempt=n;var pr=await fCya()||await fProxy();if(pr){var r1=mrg(pr.rates);var ms1=unir(r1.miss,pr.bad);if(vld(r1.m)){_consecutiveFailures=0;_cache={rates:r1.m,src:ms1.length>=CURRENCIES_LIST.length?"fallback":"live",miss:ms1,ts:n};return _cache}}var br=await fBinance();if(br){var r2=mrg(br.rates);var ms2=unir(r2.miss,br.bad);if(vld(r2.m)){_consecutiveFailures=0;_cache={rates:r2.m,src:ms2.length>=CURRENCIES_LIST.length?"fallback":"live",miss:ms2,ts:n};return _cache}}_consecutiveFailures++;_cache={rates:{...FALLBACK_RATES},src:"fallback",miss:CURRENCIES_LIST.slice(),ts:n};return _cache}
 // ── MOTOR COMERCIAL ──────────────────────────────────────────────
@@ -206,7 +217,7 @@ function StatNum({value,suffix,prefix}){
   return <span ref={ref}>{(prefix||"")+v.toLocaleString("es-CO")+(suffix||"")}</span>;
 }
 
-function Fq({q,a,i}){const[o,setO]=useState(false);return(
+function Fq({q,a}){const[o,setO]=useState(false);return(
 <div style={{background:"#fff",borderRadius:16,marginBottom:10,border:"1px solid "+T.border,overflow:"hidden",transition:"box-shadow .2s"}}
   onMouseOver={e=>e.currentTarget.style.boxShadow=T.s1} onMouseOut={e=>e.currentTarget.style.boxShadow="none"}>
   <button onClick={()=>setO(!o)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",width:"100%",background:"none",border:"none",cursor:"pointer",padding:"20px 22px",fontFamily:"inherit",gap:16}}>
@@ -369,6 +380,10 @@ export default function App(){
   const ctaRef=useRef(null);
   const[src,setSrc]=useState("live");
   const[miss,setMiss]=useState([]);
+  // Los respaldos caducan en silencio. A los 45 dias se avisa por consola para
+  // que quede constancia en cualquier revision del sitio.
+  useEffect(()=>{const d=fbEdad();
+    if(d!==null&&d>45)console.warn("[DASHR] Las tasas de respaldo se fijaron hace "+d+" dias ("+FALLBACK_DATE+"). Conviene renovarlas.");},[]);
   useEffect(()=>{const ap=r=>{setRates(r.rates);setSrc(r.src||"live");setMiss(r.miss||[])};loadRates().then(r=>{ap(r);setReady(true);setSince(0)});var iv=setInterval(()=>{loadRates().then(r=>{ap(r);setSince(0)})},CACHE_MS);var tk=setInterval(()=>setSince(s=>s+1),1000);return()=>{clearInterval(iv);clearInterval(tk)}},[]);
   const amt=pa(input),{result,rate}=calc(amt,fromC,toC,rates),fi=gc(fromC),ti=gc(toC);
   // la cotizacion solo se declara "en vivo" si AMBAS monedas del par vienen de
@@ -440,7 +455,7 @@ export default function App(){
           <span className={ready&&pairLive?"live-ring":""} style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:pairLive?T.waDeep:"#8A6100",fontWeight:600,background:pairLive?"#EAFBF1":"#FFF5E0",padding:"5px 13px",borderRadius:T.rPill}}><span className={pairLive?"pulse-dot":""} style={{width:7,height:7,borderRadius:"50%",background:pairLive?T.wa:"#E8A317"}}/>{!ready?"Cargando...":(pairLive?"En vivo":"Referencial")}</span>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:18,fontSize:11.5,color:T.ink3}}>
-          <LiveBars/><span>{pairLive?<>Tasa real de mercado · actualizada hace {since}s</>:<>Tasa referencial · la confirmamos por WhatsApp antes de operar</>}</span>
+          <LiveBars/><span>{pairLive?<>Tasa real de mercado · actualizada hace {since}s</>:<>Tasa referencial del {fbFecha()} · la confirmamos por WhatsApp antes de operar</>}</span>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:9,marginTop:2}}>
           <span style={{width:4,height:16,borderRadius:3,background:T.borderHi,flexShrink:0}}/>
@@ -611,7 +626,7 @@ export default function App(){
 <section id="s-faq" style={{padding:"80px clamp(16px,4vw,48px)",background:"#FAF7FF"}}>
   <Reveal style={{maxWidth:700,margin:"0 auto"}}>
     <h2 style={{fontSize:"clamp(26px,4vw,38px)",fontWeight:800,textAlign:"center",marginBottom:40,letterSpacing:-1.2}}>Preguntas <span style={{color:P}}>frecuentes</span></h2>
-    {["¿Qué puedo hacer con DASH?|Enviar y recibir dinero entre 6 países de LATAM, y comprar o vender USDT. Todo por WhatsApp.","¿Cómo funciona la compra/venta de USDT?|Nos escribes, te damos la cotización en vivo y te guiamos paso a paso. Sin exchange ni apps complicadas.","¿Cuánto tarda en llegar una remesa?|Típicamente menos de 30 minutos. Usualmente en menos de 15.","¿Cuánto cobran de comisión?|La tasa del simulador ya incluye todo. Sin cargos ocultos.","¿Necesito descargar algo?|No. Todo funciona por WhatsApp, sin apps ni registros.","¿Es seguro?|Verificación y comprobante de cada operación, con un asesor real acompañándote."].map(function(item,i){var p=item.split("|");return <Fq key={i} q={p[0]} a={p[1]} i={i}/>})}
+    {["¿Qué puedo hacer con DASH?|Enviar y recibir dinero entre 6 países de LATAM, y comprar o vender USDT. Todo por WhatsApp.","¿Cómo funciona la compra/venta de USDT?|Nos escribes, te damos la cotización en vivo y te guiamos paso a paso. Sin exchange ni apps complicadas.","¿Cuánto tarda en llegar una remesa?|Típicamente menos de 30 minutos. Usualmente en menos de 15.","¿Cuánto cobran de comisión?|La tasa del simulador ya incluye todo. Sin cargos ocultos.","¿Necesito descargar algo?|No. Todo funciona por WhatsApp, sin apps ni registros.","¿Es seguro?|Verificación y comprobante de cada operación, con un asesor real acompañándote."].map(function(item,i){var p=item.split("|");return <Fq key={i} q={p[0]} a={p[1]}/>})}
   </Reveal>
 </section>
 
