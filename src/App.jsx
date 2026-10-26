@@ -136,11 +136,54 @@ const CSS = `
 .mwa{display:none}
 `;
 
+// El importe visible se anima con requestAnimationFrame. Pero rAF NO se ejecuta cuando
+// la pagina no se pinta: pestana en segundo plano, ventana oculta o minimizada, algunos
+// webviews. Sin red de seguridad el numero se quedaba CONGELADO en el valor anterior
+// mientras el calculo interno ya era el correcto — el usuario podia leer un importe que
+// no corresponde a su cotizacion. Notese que document.visibilityState puede decir
+// "visible" y aun asi no dispararse ni un solo frame.
+//
+// Reglas, en orden:
+//   1. Sin nada que animar, con prefers-reduced-motion, con la pagina oculta o sin rAF
+//      disponible -> se fija el valor directamente, sin animacion.
+//   2. Si se anima, un temporizador de respaldo fija el valor final aunque rAF nunca
+//      dispare. setTimeout si corre en segundo plano (aunque estrangulado), asi que el
+//      importe termina sincronizado siempre.
+//   3. Al volver la pestana a primer plano, se sincroniza de inmediato.
+//   4. El ref sigue el valor realmente mostrado en cada paso, para que una animacion
+//      interrumpida continue desde donde iba y no salte desde un valor viejo.
 function useCountUp(value){
-  const[disp,setDisp]=useState(value);const ref=useRef(value);
-  useEffect(()=>{const from=ref.current,to=value,dur=420,start=performance.now();let raf;
-    function step(now){const p=Math.min(1,(now-start)/dur);const e=1-Math.pow(1-p,3);setDisp(Math.round(from+(to-from)*e));if(p<1)raf=requestAnimationFrame(step);else ref.current=to}
-    raf=requestAnimationFrame(step);return()=>cancelAnimationFrame(raf)},[value]);
+  const[disp,setDisp]=useState(value);
+  const ref=useRef(value);
+  useEffect(()=>{
+    const to=value,from=ref.current;
+    const fijar=()=>{ref.current=to;setDisp(to)};
+    if(from===to){fijar();return}
+    const sinAnimacion=
+      typeof window==="undefined"||
+      typeof requestAnimationFrame!=="function"||
+      (typeof document!=="undefined"&&document.visibilityState==="hidden")||
+      (typeof window.matchMedia==="function"&&window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    if(sinAnimacion){fijar();return}
+    const dur=420,start=performance.now();
+    let raf=0;
+    function step(now){
+      const p=Math.min(1,(now-start)/dur);
+      const e=1-Math.pow(1-p,3);
+      const v=Math.round(from+(to-from)*e);
+      ref.current=v;setDisp(v);
+      if(p<1)raf=requestAnimationFrame(step);else fijar();
+    }
+    raf=requestAnimationFrame(step);
+    const respaldo=setTimeout(fijar,dur+140);
+    const alVolver=()=>{if(document.visibilityState==="visible")fijar()};
+    document.addEventListener("visibilitychange",alVolver);
+    return()=>{
+      cancelAnimationFrame(raf);
+      clearTimeout(respaldo);
+      document.removeEventListener("visibilitychange",alVolver);
+    };
+  },[value]);
   return disp;
 }
 
